@@ -38,9 +38,13 @@ mod tests {
 
     #[test]
     fn test_canonicalise_deeply_nested() {
-        let obj = json!({"level1": {"level2": {"level3": {"level4": {"d": 4, "c": 3, "b": 2, "a": 1}}}}});
+        let obj =
+            json!({"level1": {"level2": {"level3": {"level4": {"d": 4, "c": 3, "b": 2, "a": 1}}}}});
         let result = canonicalise(&obj).unwrap();
-        assert_eq!(result, r#"{"level1":{"level2":{"level3":{"level4":{"a":1,"b":2,"c":3,"d":4}}}}}"#);
+        assert_eq!(
+            result,
+            r#"{"level1":{"level2":{"level3":{"level4":{"a":1,"b":2,"c":3,"d":4}}}}}"#
+        );
     }
 
     #[test]
@@ -55,7 +59,10 @@ mod tests {
         let obj = json!({"users": [{"name": "Bob", "age": 25}, {"name": "Alice", "age": 30}]});
         let result = canonicalise(&obj).unwrap();
         // Array order preserved, but object keys sorted
-        assert_eq!(result, r#"{"users":[{"age":25,"name":"Bob"},{"age":30,"name":"Alice"}]}"#);
+        assert_eq!(
+            result,
+            r#"{"users":[{"age":25,"name":"Bob"},{"age":30,"name":"Alice"}]}"#
+        );
     }
 
     #[test]
@@ -87,7 +94,7 @@ mod tests {
         // serde_json preserves 0.0 as 0.0
         assert_eq!(canonicalise(&json!(0.0)).unwrap(), "0.0");
         assert_eq!(canonicalise(&json!(-2.5)).unwrap(), "-2.5");
-        
+
         // Scientific notation might differ slightly depending on precision, but 1e10 is usually 10000000000.0
         // Let's check what serde_json does.
         // serde_json::to_string(&json!(1e10)) -> "10000000000.0"
@@ -98,7 +105,7 @@ mod tests {
     fn test_canonicalise_unicode() {
         let obj = json!({"russian": "Алиса", "emoji": "🎉", "chinese": "你好", "arabic": "مرحبا"});
         let result = canonicalise(&obj).unwrap();
-        
+
         // serde_json by default does NOT escape unicode characters unless configured otherwise,
         // but to_string() usually produces compact JSON.
         // Let's verify the content is present.

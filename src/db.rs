@@ -1,5 +1,5 @@
-use sqlx::{PgPool, Row};
 use sqlx::postgres::{PgPoolOptions, PgRow};
+use sqlx::{PgPool, Row};
 
 pub struct Db {
     pool: PgPool,
@@ -19,7 +19,7 @@ impl Db {
             .max_connections(pool_size)
             .connect(connection_string)
             .await?;
-        
+
         let register_query = format!(
             r#"
             WITH inserted AS (
@@ -77,11 +77,14 @@ impl Db {
             .bind(json_str) // $2
             .fetch_one(&self.pool)
             .await?;
-        
+
         row.try_get(0)
     }
 
-    pub async fn register_batch_objects(&self, json_strs: &[String]) -> Result<Vec<i64>, sqlx::Error> {
+    pub async fn register_batch_objects(
+        &self,
+        json_strs: &[String],
+    ) -> Result<Vec<i64>, sqlx::Error> {
         if json_strs.is_empty() {
             return Ok(vec![]);
         }
@@ -96,7 +99,7 @@ impl Db {
             let id: i64 = row.try_get(0)?;
             ids.push(id);
         }
-        
+
         Ok(ids)
     }
 }

@@ -1,6 +1,8 @@
-import pytest
 import os
+
+import pytest
 from json_register import JsonRegister
+
 
 # Helper to parse DATABASE_URL
 def get_db_config():
@@ -12,7 +14,7 @@ def get_db_config():
             prefix, rest = db_url.split("://")
         else:
             rest = db_url
-            
+
         if "@" in rest:
             user_pass, host_port_db = rest.split("@")
             if ":" in user_pass:
@@ -36,7 +38,7 @@ def get_db_config():
         else:
             host = host_port
             port = "5432"
-            
+
         return {
             "database_name": dbname,
             "database_host": host,
@@ -60,7 +62,7 @@ def register(db_config):
     # Create a unique table name for each test run?
     # For simplicity, use a fixed test table.
     table_name = "json_objects_test_py"
-    
+
     try:
         reg = JsonRegister(
             database_name=db_config["database_name"],
@@ -82,11 +84,11 @@ def test_register_object(register):
     obj = {"a": 1, "b": 2}
     id1 = register.register_object(obj)
     assert isinstance(id1, int)
-    
+
     # Register same object again, should get same ID
     id2 = register.register_object(obj)
     assert id1 == id2
-    
+
     # Register different object
     obj2 = {"a": 1, "b": 3}
     id3 = register.register_object(obj2)
@@ -103,16 +105,16 @@ def test_batch_order_preservation(register):
     # Create a list of objects
     objs = [{"k": i} for i in range(100)]
     ids = register.register_batch_objects(objs)
-    
+
     assert len(ids) == 100
-    
+
     # Verify IDs are unique (since objects are unique)
     assert len(set(ids)) == 100
-    
+
     # Register again mixed with new ones
     objs2 = [{"k": i} for i in range(50, 150)]
     ids2 = register.register_batch_objects(objs2)
-    
+
     assert len(ids2) == 100
     # First 50 of ids2 should match last 50 of ids
     assert ids2[:50] == ids[50:]
@@ -122,11 +124,11 @@ def test_types_roundtrip(register):
     id1 = register.register_object({"a": 1})
     id2 = register.register_object({"a": "1"})
     assert id1 != id2
-    
+
     id3 = register.register_object({"a": True})
     id4 = register.register_object({"a": False})
     assert id3 != id4
-    
+
     id5 = register.register_object({"a": None})
     id6 = register.register_object({"a": []})
     assert id5 != id6

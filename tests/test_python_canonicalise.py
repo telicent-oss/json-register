@@ -1,6 +1,5 @@
-import pytest
-import json
 from json_register import canonicalise
+
 
 def test_empty_dict():
     assert canonicalise({}) == b"{}"
@@ -53,7 +52,6 @@ def test_deeply_nested():
 
 def test_mixed_types_in_list():
     obj = {"a": [1, "two", 3.0, True, None]}
-    expected = b'{"a":[1,"two",3.0,true,null]}'
     # Note: Rust might output 3.0 as 3.0
     assert canonicalise(obj) == b'{"a":[1,"two",3.0,true,null]}'
 
@@ -61,7 +59,7 @@ def test_empty_list():
     assert canonicalise([]) == b"[]"
 
 def test_whitespace():
-    # Input whitespace shouldn't matter if it's just python objects, 
+    # Input whitespace shouldn't matter if it's just python objects,
     # but if we were parsing JSON string it would.
     # Here we pass python objects.
     pass

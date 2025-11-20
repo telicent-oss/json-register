@@ -1,10 +1,21 @@
 use json_register::Register;
 use serde_json::json;
+use std::collections::HashSet;
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::collections::HashSet;
 
-fn get_config() -> (String, String, String, String, String, usize, String, String, String, u32) {
+fn get_config() -> (
+    String,
+    String,
+    String,
+    String,
+    String,
+    usize,
+    String,
+    String,
+    String,
+    u32,
+) {
     (
         env::var("TEST_DB_NAME").unwrap_or_else(|_| "access".to_string()),
         env::var("TEST_DB_HOST").unwrap_or_else(|_| "localhost".to_string()),
@@ -20,13 +31,22 @@ fn get_config() -> (String, String, String, String, String, usize, String, Strin
 }
 
 async fn create_register() -> Register {
-    let (db_name, host, port, user, password, cache_size, table, id_col, json_col, pool_size) = get_config();
-    let conn_str = format!("postgres://{}:{}@{}:{}/{}", user, password, host, port, db_name);
-    Register::new(&conn_str, &table, &id_col, &json_col, pool_size, cache_size).await.expect("Failed to connect to DB")
+    let (db_name, host, port, user, password, cache_size, table, id_col, json_col, pool_size) =
+        get_config();
+    let conn_str = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        user, password, host, port, db_name
+    );
+    Register::new(&conn_str, &table, &id_col, &json_col, pool_size, cache_size)
+        .await
+        .expect("Failed to connect to DB")
 }
 
 fn get_timestamp() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_micros()
 }
 
 #[tokio::test]
@@ -34,10 +54,10 @@ fn get_timestamp() -> u128 {
 async fn test_register_object() {
     let register = create_register().await;
     let obj = json!({"name": "Alice", "age": 30});
-    
+
     let id1 = register.register_object(&obj).await.unwrap();
     let id2 = register.register_object(&obj).await.unwrap();
-    
+
     assert_eq!(id1, id2);
 }
 
@@ -76,7 +96,11 @@ async fn test_batch_order_preserved_all_new() {
 
     for (i, obj) in objects.iter().enumerate() {
         let individual_id = register.register_object(obj).await.unwrap();
-        assert_eq!(batch_ids[i], individual_id, "Object at index {} should have matching ID", i);
+        assert_eq!(
+            batch_ids[i], individual_id,
+            "Object at index {} should have matching ID",
+            i
+        );
     }
 }
 
@@ -221,11 +245,14 @@ async fn test_batch_order_preservation_stress() {
         json!({"type": "dupe_test", "value": "B", "timestamp": timestamp}),
     ];
 
-    let dupe_ids = register.register_batch_objects(&batch_with_dupes).await.unwrap();
+    let dupe_ids = register
+        .register_batch_objects(&batch_with_dupes)
+        .await
+        .unwrap();
     assert_eq!(dupe_ids.len(), 5);
     assert_eq!(dupe_ids[0], dupe_ids[2]);
     assert_eq!(dupe_ids[1], dupe_ids[4]);
-    
+
     let unique_dupe_ids: HashSet<_> = dupe_ids.iter().collect();
     assert_eq!(unique_dupe_ids.len(), 3);
 }

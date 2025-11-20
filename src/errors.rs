@@ -1,8 +1,8 @@
-use thiserror::Error;
-#[cfg(feature = "python")]
-use pyo3::PyErr;
 #[cfg(feature = "python")]
 use pyo3::exceptions::PyRuntimeError;
+#[cfg(feature = "python")]
+use pyo3::PyErr;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum JsonRegisterError {
