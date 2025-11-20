@@ -76,7 +76,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest maturin
+          pip install pytest maturin "psycopg[binary]"
       - name: Build and install extension
         env:
           DATABASE_URL: postgres://postgres:password@localhost:5432/json_register_test

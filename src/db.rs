@@ -24,14 +24,14 @@ impl Db {
             r#"
             WITH inserted AS (
                 INSERT INTO {table_name} ({jsonb_column})
-                VALUES ($1)
+                VALUES ($1::jsonb)
                 ON CONFLICT ({jsonb_column}) DO NOTHING
                 RETURNING {id_column}
             )
             SELECT {id_column} FROM inserted
             UNION ALL
             SELECT {id_column} FROM {table_name}
-            WHERE {jsonb_column} = $2
+            WHERE {jsonb_column} = $2::jsonb
               AND NOT EXISTS (SELECT 1 FROM inserted)
             LIMIT 1
             "#

@@ -30,9 +30,10 @@ fn get_config() -> (
     )
 }
 
-async fn create_register() -> Register {
-    let (db_name, host, port, user, password, cache_size, table, id_col, json_col, pool_size) =
+async fn create_register(suffix: &str) -> Register {
+    let (db_name, host, port, user, password, cache_size, base_table, id_col, json_col, pool_size) =
         get_config();
+    let table = format!("{}_{}", base_table, suffix);
     let conn_str = format!(
         "postgres://{}:{}@{}:{}/{}",
         user, password, host, port, db_name
@@ -69,7 +70,7 @@ fn get_timestamp() -> u128 {
 #[tokio::test]
 #[ignore]
 async fn test_register_object() {
-    let register = create_register().await;
+    let register = create_register("obj").await;
     let obj = json!({"name": "Alice", "age": 30});
 
     let id1 = register.register_object(&obj).await.unwrap();
@@ -81,7 +82,7 @@ async fn test_register_object() {
 #[tokio::test]
 #[ignore]
 async fn test_register_batch_objects() {
-    let register = create_register().await;
+    let register = create_register("batch").await;
     let objects = vec![
         json!({"name": "Alice"}),
         json!({"name": "Bob"}),
@@ -98,7 +99,7 @@ async fn test_register_batch_objects() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_order_preserved_all_new() {
-    let register = create_register().await;
+    let register = create_register("order_new").await;
     let timestamp = get_timestamp();
 
     let objects = vec![
@@ -124,7 +125,7 @@ async fn test_batch_order_preserved_all_new() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_order_preserved_mixed_existing() {
-    let register = create_register().await;
+    let register = create_register("order_mixed").await;
     let timestamp = get_timestamp();
 
     let obj1 = json!({"test": "mixed_1", "timestamp": timestamp});
@@ -156,7 +157,7 @@ async fn test_batch_order_preserved_mixed_existing() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_different_key_orders_same_ids() {
-    let register = create_register().await;
+    let register = create_register("key_order").await;
     let timestamp = get_timestamp();
 
     let batch1 = vec![
@@ -179,7 +180,7 @@ async fn test_batch_different_key_orders_same_ids() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_large_order_preservation() {
-    let register = create_register().await;
+    let register = create_register("large").await;
     let timestamp = get_timestamp();
 
     let mut objects = Vec::new();
@@ -207,7 +208,7 @@ async fn test_batch_large_order_preservation() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_order_preservation_stress() {
-    let register = create_register().await;
+    let register = create_register("stress").await;
     let timestamp = get_timestamp();
 
     let pre_registered = vec![
