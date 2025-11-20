@@ -1,0 +1,29 @@
+[package]
+name = "json-register"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust library for registering JSON objects with canonicalisation and caching"
+license = "Apache-2.0"
+repository = "https://github.com/telicent-oss/json-register"
+readme = "README.md"
+keywords = ["json", "canonicalisation", "hashing", "database"]
+categories = ["database", "encoding"]
+
+[lib]
+name = "json_register"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["python"]
+python = ["dep:pyo3", "dep:pythonize"]
+
+[dependencies]
+pyo3 = { version = "0.23.3", features = ["extension-module"], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+lru = "0.12"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "time"] }
+tokio = { version = "1.0", features = ["full"] }
+thiserror = "2.0"
+pythonize = { version = "0.23", optional = true }
+
