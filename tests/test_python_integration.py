@@ -63,6 +63,26 @@ def register(db_config):
     # For simplicity, use a fixed test table.
     table_name = "json_objects_test_py"
 
+    # Ensure table exists using psycopg (since we can't rely on the Rust code to create it yet)
+    try:
+        import psycopg
+        conn_str = f"postgresql://{db_config['database_user']}:{db_config['database_password']}@{db_config['database_host']}:{db_config['database_port']}/{db_config['database_name']}"
+        with psycopg.connect(conn_str) as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {table_name} (
+                        id BIGSERIAL PRIMARY KEY,
+                        json_object JSONB UNIQUE NOT NULL
+                    )
+                """)
+            conn.commit()
+    except ImportError:
+        # If psycopg is not available, we might fail if the table doesn't exist.
+        # But we should have it installed in the dev environment.
+        print("Warning: psycopg not found, skipping table creation")
+    except Exception as e:
+        print(f"Warning: Failed to create table: {e}")
+
     try:
         reg = JsonRegister(
             database_name=db_config["database_name"],

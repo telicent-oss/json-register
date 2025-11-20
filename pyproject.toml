@@ -13,6 +13,7 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "psycopg[binary]>=3.0.0",
 ]
 
 [tool.mypy]

@@ -39,7 +39,9 @@ async fn create_register() -> Register {
     );
 
     // Ensure table exists
-    let pool = sqlx::PgPool::connect(&conn_str).await.expect("Failed to connect to DB for setup");
+    let pool = sqlx::PgPool::connect(&conn_str)
+        .await
+        .expect("Failed to connect to DB for setup");
     sqlx::query(&format!(
         r#"
         CREATE TABLE IF NOT EXISTS {table} (
