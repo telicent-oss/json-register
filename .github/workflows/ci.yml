@@ -68,11 +68,18 @@ jobs:
         with:
           python-version: '3.12'
       - uses: dtolnay/rust-toolchain@stable
+      - name: Create virtualenv
+        run: |
+          python -m venv .venv
+          echo "VIRTUAL_ENV=$(pwd)/.venv" >> $GITHUB_ENV
+          echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install pytest maturin
       - name: Build and install extension
+        env:
+          DATABASE_URL: postgres://postgres:password@localhost:5432/json_register_test
         run: maturin develop
       - name: Run Python tests
         env:

@@ -37,6 +37,21 @@ async fn create_register() -> Register {
         "postgres://{}:{}@{}:{}/{}",
         user, password, host, port, db_name
     );
+
+    // Ensure table exists
+    let pool = sqlx::PgPool::connect(&conn_str).await.expect("Failed to connect to DB for setup");
+    sqlx::query(&format!(
+        r#"
+        CREATE TABLE IF NOT EXISTS {table} (
+            {id_col} BIGSERIAL PRIMARY KEY,
+            {json_col} JSONB UNIQUE NOT NULL
+        )
+        "#
+    ))
+    .execute(&pool)
+    .await
+    .expect("Failed to create table");
+
     Register::new(&conn_str, &table, &id_col, &json_col, pool_size, cache_size)
         .await
         .expect("Failed to connect to DB")
