@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "json-register"
+name = "json-register-rust"
 dynamic = ["version"]
 description = "A Python library for registering JSON objects in PostgreSQL with canonicalisation and caching"
 readme = "README.md"

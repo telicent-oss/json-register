@@ -118,7 +118,7 @@ jobs:
     if: inputs.publish_to_testpypi == true
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/json-register
+      url: https://test.pypi.org/p/json-register-rust
     steps:
       - uses: actions/download-artifact@v4
         with:

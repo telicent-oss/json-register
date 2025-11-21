@@ -39,13 +39,13 @@ Ensure you have a compatible Python environment (3.8+) and install the package.
 Currently available on TestPyPI:
 
 ```bash
-pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ json-register
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ json-register-rust
 ```
 
 Once published to PyPI:
 
 ```bash
-pip install json-register
+pip install json-register-rust
 ```
 
 ## Usage
