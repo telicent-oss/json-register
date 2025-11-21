@@ -5,13 +5,36 @@ build-backend = "maturin"
 [project]
 name = "json-register"
 dynamic = ["version"]
+description = "A Python library for registering JSON objects in PostgreSQL with canonicalisation and caching"
+readme = "README.md"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.8"
+authors = [
+    { name = "Telicent Ltd" }
+]
+keywords = ["json", "canonicalisation", "postgresql", "database", "cache"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/telicent-oss/json-register"
+Repository = "https://github.com/telicent-oss/json-register"
+Issues = "https://github.com/telicent-oss/json-register/issues"
 
 [project.optional-dependencies]
 dev = [

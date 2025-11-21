@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/telicent-oss/json-register/actions/workflows/ci.yml/badge.svg)](https://github.com/telicent-oss/json-register/actions/workflows/ci.yml)
 
+> **Note**: This library is currently in beta. The API is stable but may change in future releases based on user feedback and production usage.
+
 `json-register` is a caching registry for JSON objects, with storage in a PostgreSQL database, using their JSONB encoding. It ensures that semantically equivalent JSON objects are cached only once by employing a canonicalisation strategy in the cache, and using JSONB comparisons in the database. The database assigns a uniqiue 32-bit integer identifier to each object.
 
 This library is written in Rust and provides native bindings for Python, allowing for seamless integration into applications written in either language.
@@ -32,7 +34,15 @@ serde_json = "1.0"
 
 ### Python
 
-Ensure you have a compatible Python environment (3.8+) and install the package:
+Ensure you have a compatible Python environment (3.8+) and install the package.
+
+Currently available on TestPyPI:
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ json-register
+```
+
+Once published to PyPI:
 
 ```bash
 pip install json-register

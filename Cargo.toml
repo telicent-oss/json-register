@@ -2,11 +2,11 @@
 name = "json-register"
 version = "0.1.0"
 edition = "2021"
-description = "A Rust library for registering JSON objects with canonicalisation and caching"
+description = "A Rust library for registering JSON objects in PostgreSQL with canonicalisation and caching"
 license = "Apache-2.0"
 repository = "https://github.com/telicent-oss/json-register"
 readme = "README.md"
-keywords = ["json", "canonicalisation", "hashing", "database"]
+keywords = ["json", "canonicalisation", "postgresql", "database", "cache"]
 categories = ["database", "encoding"]
 
 [lib]
