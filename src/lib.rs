@@ -25,6 +25,32 @@ pub use canonicalise::canonicalise;
 pub use db::Db;
 pub use errors::JsonRegisterError;
 
+/// Builds a PostgreSQL connection string from its components.
+///
+/// # Arguments
+///
+/// * `user` - Database user name
+/// * `password` - Database password
+/// * `host` - Database host (e.g., "localhost")
+/// * `port` - Database port (e.g., 5432)
+/// * `database` - Database name
+///
+/// # Returns
+///
+/// A formatted PostgreSQL connection string
+pub fn build_connection_string(
+    user: &str,
+    password: &str,
+    host: &str,
+    port: u16,
+    database: &str,
+) -> String {
+    format!(
+        "postgres://{}:{}@{}:{}/{}",
+        user, password, host, port, database
+    )
+}
+
 /// The main registry structure that coordinates database interactions and caching.
 ///
 /// This struct maintains a connection pool to the PostgreSQL database and an
@@ -45,10 +71,14 @@ impl Register {
     /// * `jsonb_column` - The name of the column storing the JSONB data.
     /// * `pool_size` - The maximum number of connections in the database pool.
     /// * `lru_cache_size` - The capacity of the in-memory LRU cache.
+    /// * `acquire_timeout_secs` - Optional timeout for acquiring connections (default: 5s).
+    /// * `idle_timeout_secs` - Optional timeout for idle connections (default: 600s).
+    /// * `max_lifetime_secs` - Optional maximum lifetime for connections (default: 1800s).
     ///
     /// # Returns
     ///
     /// A `Result` containing the new `Register` instance or a `JsonRegisterError`.
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         connection_string: &str,
         table_name: &str,
@@ -56,6 +86,9 @@ impl Register {
         jsonb_column: &str,
         pool_size: u32,
         lru_cache_size: usize,
+        acquire_timeout_secs: Option<u64>,
+        idle_timeout_secs: Option<u64>,
+        max_lifetime_secs: Option<u64>,
     ) -> Result<Self, JsonRegisterError> {
         let db = Db::new(
             connection_string,
@@ -63,6 +96,9 @@ impl Register {
             id_column,
             jsonb_column,
             pool_size,
+            acquire_timeout_secs,
+            idle_timeout_secs,
+            max_lifetime_secs,
         )
         .await
         .map_err(JsonRegisterError::DbError)?;
@@ -178,10 +214,19 @@ impl PyJsonRegister {
         table_name="json_objects",
         id_column="id",
         jsonb_column="json_object",
-        pool_size=10
+        pool_size=10,
+        acquire_timeout_secs=None,
+        idle_timeout_secs=None,
+        max_lifetime_secs=None
     ))]
     #[allow(clippy::too_many_arguments)]
     /// Initializes a new `JsonRegister` instance from Python.
+    ///
+    /// # Optional Timeout Parameters
+    ///
+    /// * `acquire_timeout_secs` - Timeout for acquiring a connection from pool (default: 5)
+    /// * `idle_timeout_secs` - Timeout for idle connections before closure (default: 600)
+    /// * `max_lifetime_secs` - Maximum lifetime of connections (default: 1800)
     fn new(
         database_name: String,
         database_host: String,
@@ -193,6 +238,9 @@ impl PyJsonRegister {
         id_column: &str,
         jsonb_column: &str,
         pool_size: u32,
+        acquire_timeout_secs: Option<u64>,
+        idle_timeout_secs: Option<u64>,
+        max_lifetime_secs: Option<u64>,
     ) -> PyResult<Self> {
         // Validate configuration parameters
         if database_name.is_empty() {
@@ -246,9 +294,12 @@ impl PyJsonRegister {
             );
         }
 
-        let connection_string = format!(
-            "postgres://{}:{}@{}:{}/{}",
-            database_user, database_password, database_host, database_port, database_name
+        let connection_string = build_connection_string(
+            &database_user,
+            &database_password,
+            &database_host,
+            database_port,
+            &database_name,
         );
 
         let rt = Runtime::new().map_err(|e| JsonRegisterError::RuntimeError(e.to_string()))?;
@@ -261,6 +312,9 @@ impl PyJsonRegister {
                 jsonb_column,
                 pool_size,
                 lru_cache_size,
+                acquire_timeout_secs,
+                idle_timeout_secs,
+                max_lifetime_secs,
             )
             .await
         })?;

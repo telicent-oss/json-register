@@ -1,5 +1,6 @@
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{PgPool, Row};
+use std::time::Duration;
 
 /// Validates that an SQL identifier (table or column name) is safe to use.
 ///
@@ -69,24 +70,42 @@ impl Db {
     /// * `id_column` - The name of the ID column.
     /// * `jsonb_column` - The name of the JSONB column.
     /// * `pool_size` - The maximum number of connections in the pool.
+    /// * `acquire_timeout_secs` - Optional timeout for acquiring connections (default: 5s).
+    /// * `idle_timeout_secs` - Optional timeout for idle connections (default: 600s).
+    /// * `max_lifetime_secs` - Optional maximum lifetime for connections (default: 1800s).
     ///
     /// # Returns
     ///
     /// A `Result` containing the new `Db` instance or a `sqlx::Error`.
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         connection_string: &str,
         table_name: &str,
         id_column: &str,
         jsonb_column: &str,
         pool_size: u32,
+        acquire_timeout_secs: Option<u64>,
+        idle_timeout_secs: Option<u64>,
+        max_lifetime_secs: Option<u64>,
     ) -> Result<Self, sqlx::Error> {
         // Validate SQL identifiers to prevent SQL injection
         validate_sql_identifier(table_name, "table_name")?;
         validate_sql_identifier(id_column, "id_column")?;
         validate_sql_identifier(jsonb_column, "jsonb_column")?;
 
+        // Use provided timeouts or sensible defaults
+        let acquire_timeout = Duration::from_secs(acquire_timeout_secs.unwrap_or(5));
+        let idle_timeout = idle_timeout_secs.map(Duration::from_secs);
+        let max_lifetime = max_lifetime_secs.map(Duration::from_secs);
+
         let pool = PgPoolOptions::new()
             .max_connections(pool_size)
+            // Acquire timeout: get a connection from the pool
+            .acquire_timeout(acquire_timeout)
+            // Idle timeout: close connections idle for too long (default: 10 min)
+            .idle_timeout(idle_timeout.or(Some(Duration::from_secs(600))))
+            // Max lifetime: close connections after max age (default: 30 min)
+            .max_lifetime(max_lifetime.or(Some(Duration::from_secs(1800))))
             .connect(connection_string)
             .await?;
 

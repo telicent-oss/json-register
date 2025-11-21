@@ -1,4 +1,4 @@
-use json_register::Register;
+use json_register::{build_connection_string, Register};
 use serde_json::json;
 use std::collections::HashSet;
 use std::env;
@@ -41,10 +41,8 @@ async fn create_register(suffix: &str) -> Register {
     let (db_name, host, port, user, password, cache_size, base_table, id_col, json_col, pool_size) =
         get_config();
     let table = format!("{}_{}", base_table, suffix);
-    let conn_str = format!(
-        "postgres://{}:{}@{}:{}/{}",
-        user, password, host, port, db_name
-    );
+    let port_num: u16 = port.parse().expect("Invalid port number");
+    let conn_str = build_connection_string(&user, &password, &host, port_num, &db_name);
 
     // Ensure the test table exists.
     let pool = sqlx::PgPool::connect(&conn_str)
@@ -62,9 +60,14 @@ async fn create_register(suffix: &str) -> Register {
     .await
     .expect("Failed to create table");
 
-    Register::new(&conn_str, &table, &id_col, &json_col, pool_size, cache_size)
-        .await
-        .expect("Failed to connect to DB")
+    Register::new(
+        &conn_str, &table, &id_col, &json_col, pool_size, cache_size,
+        None, // acquire_timeout_secs
+        None, // idle_timeout_secs
+        None, // max_lifetime_secs
+    )
+    .await
+    .expect("Failed to connect to DB")
 }
 
 fn get_timestamp() -> u128 {
