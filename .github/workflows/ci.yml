@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -110,7 +110,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist ${{ matrix.target == 'x86_64-unknown-linux-gnu' && '-i python' || '' }}
           sccache: 'true'
           manylinux: auto
         env:
@@ -127,8 +127,9 @@ jobs:
   windows:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
-        target: [x64, aarch64]
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -138,11 +139,11 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter ${{ matrix.target == 'aarch64' && '--features generate-import-lib' || '' }}
+          args: --release --out dist ${{ matrix.target == 'x86_64-pc-windows-msvc' && '-i python' || '--features extension-module,generate-import-lib' }}
           sccache: 'true'
         env:
           # Fix for Windows ARM64 linking
-          PYO3_NO_PYTHON: ${{ matrix.target == 'aarch64' && '1' || '' }}
+          PYO3_NO_PYTHON: ${{ matrix.target == 'aarch64-pc-windows-msvc' && '1' || '' }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -155,9 +156,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: x86_64
+          - target: x86_64-apple-darwin
             os: macos-13
-          - target: aarch64
+          - target: aarch64-apple-darwin
             os: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -168,7 +169,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
