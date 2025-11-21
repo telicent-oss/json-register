@@ -194,9 +194,55 @@ impl PyJsonRegister {
         jsonb_column: &str,
         pool_size: u32,
     ) -> PyResult<Self> {
+        // Validate configuration parameters
         if database_name.is_empty() {
             return Err(
                 JsonRegisterError::Configuration("database_name cannot be empty".into()).into(),
+            );
+        }
+
+        if database_host.is_empty() {
+            return Err(
+                JsonRegisterError::Configuration("database_host cannot be empty".into()).into(),
+            );
+        }
+
+        if database_port == 0 {
+            return Err(JsonRegisterError::Configuration(
+                "database_port must be between 1 and 65535".into(),
+            )
+            .into());
+        }
+
+        if pool_size == 0 {
+            return Err(JsonRegisterError::Configuration(
+                "pool_size must be greater than 0".into(),
+            )
+            .into());
+        }
+
+        if pool_size > 10000 {
+            return Err(JsonRegisterError::Configuration(
+                "pool_size exceeds reasonable maximum of 10000".into(),
+            )
+            .into());
+        }
+
+        if table_name.is_empty() {
+            return Err(
+                JsonRegisterError::Configuration("table_name cannot be empty".into()).into(),
+            );
+        }
+
+        if id_column.is_empty() {
+            return Err(
+                JsonRegisterError::Configuration("id_column cannot be empty".into()).into(),
+            );
+        }
+
+        if jsonb_column.is_empty() {
+            return Err(
+                JsonRegisterError::Configuration("jsonb_column cannot be empty".into()).into(),
             );
         }
 

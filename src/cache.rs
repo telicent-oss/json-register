@@ -16,10 +16,14 @@ impl Cache {
     ///
     /// # Arguments
     ///
-    /// * `capacity` - The maximum number of items the cache can hold.
+    /// * `capacity` - The maximum number of items the cache can hold. Minimum capacity is 1.
     pub fn new(capacity: usize) -> Self {
+        // Ensure capacity is at least 1 to avoid panic
+        let safe_capacity = capacity.max(1);
         Self {
-            inner: Mutex::new(LruCache::new(NonZeroUsize::new(capacity).unwrap())),
+            inner: Mutex::new(LruCache::new(
+                NonZeroUsize::new(safe_capacity).expect("capacity should be non-zero after max(1)"),
+            )),
         }
     }
 
@@ -32,8 +36,10 @@ impl Cache {
     /// # Returns
     ///
     /// `Some(i32)` if the key exists, `None` otherwise.
+    /// Returns `None` if the cache mutex is poisoned (treated as cache miss).
     pub fn get(&self, key: &str) -> Option<i32> {
-        let mut cache = self.inner.lock().unwrap();
+        // Handle poisoned mutex gracefully by treating it as a cache miss
+        let mut cache = self.inner.lock().ok()?;
         cache.get(key).copied()
     }
 
@@ -43,8 +49,55 @@ impl Cache {
     ///
     /// * `key` - The canonicalised JSON string key.
     /// * `value` - The database ID associated with the key.
+    ///
+    /// If the cache mutex is poisoned, the operation is silently skipped.
     pub fn put(&self, key: String, value: i32) {
-        let mut cache = self.inner.lock().unwrap();
-        cache.put(key, value);
+        // Handle poisoned mutex gracefully by skipping the cache update
+        if let Ok(mut cache) = self.inner.lock() {
+            cache.put(key, value);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_zero_capacity_does_not_panic() {
+        // Verifies that creating a cache with capacity 0 doesn't panic
+        // and is automatically adjusted to minimum capacity of 1
+        let cache = Cache::new(0);
+        cache.put("test".to_string(), 42);
+        assert_eq!(cache.get("test"), Some(42));
+    }
+
+    #[test]
+    fn test_cache_basic_operations() {
+        // Verifies basic cache get/put operations
+        let cache = Cache::new(10);
+
+        assert_eq!(cache.get("key1"), None);
+
+        cache.put("key1".to_string(), 100);
+        assert_eq!(cache.get("key1"), Some(100));
+
+        cache.put("key2".to_string(), 200);
+        assert_eq!(cache.get("key2"), Some(200));
+        assert_eq!(cache.get("key1"), Some(100));
+    }
+
+    #[test]
+    fn test_cache_lru_eviction() {
+        // Verifies that LRU eviction works correctly with small capacity
+        let cache = Cache::new(2);
+
+        cache.put("key1".to_string(), 1);
+        cache.put("key2".to_string(), 2);
+        cache.put("key3".to_string(), 3); // Should evict key1
+
+        assert_eq!(cache.get("key1"), None); // Evicted
+        assert_eq!(cache.get("key2"), Some(2));
+        assert_eq!(cache.get("key3"), Some(3));
     }
 }

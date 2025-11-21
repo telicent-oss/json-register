@@ -1,6 +1,53 @@
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{PgPool, Row};
 
+/// Validates that an SQL identifier (table or column name) is safe to use.
+///
+/// # Arguments
+///
+/// * `identifier` - The identifier to validate.
+/// * `name` - A descriptive name for error messages (e.g., "table_name", "column_name").
+///
+/// # Returns
+///
+/// `Ok(())` if valid, or an error describing the issue.
+fn validate_sql_identifier(identifier: &str, name: &str) -> Result<(), sqlx::Error> {
+    if identifier.is_empty() {
+        return Err(sqlx::Error::Configuration(
+            format!("{} cannot be empty", name).into(),
+        ));
+    }
+
+    if identifier.len() > 63 {
+        return Err(sqlx::Error::Configuration(
+            format!("{} exceeds PostgreSQL's 63 character limit", name).into(),
+        ));
+    }
+
+    // Validate that identifier contains only safe characters: alphanumeric, underscore
+    // Must start with a letter or underscore
+    let first_char = identifier.chars().next().unwrap();
+    if !first_char.is_ascii_alphabetic() && first_char != '_' {
+        return Err(sqlx::Error::Configuration(
+            format!("{} must start with a letter or underscore", name).into(),
+        ));
+    }
+
+    for c in identifier.chars() {
+        if !c.is_ascii_alphanumeric() && c != '_' {
+            return Err(sqlx::Error::Configuration(
+                format!(
+                    "{} contains invalid character '{}'. Only alphanumeric and underscore allowed",
+                    name, c
+                )
+                .into(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Handles database interactions for registering JSON objects.
 ///
 /// This struct manages the connection pool and executes SQL queries to insert
@@ -33,6 +80,11 @@ impl Db {
         jsonb_column: &str,
         pool_size: u32,
     ) -> Result<Self, sqlx::Error> {
+        // Validate SQL identifiers to prevent SQL injection
+        validate_sql_identifier(table_name, "table_name")?;
+        validate_sql_identifier(id_column, "id_column")?;
+        validate_sql_identifier(jsonb_column, "jsonb_column")?;
+
         let pool = PgPoolOptions::new()
             .max_connections(pool_size)
             .connect(connection_string)
@@ -144,5 +196,86 @@ impl Db {
         }
 
         Ok(ids)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_sql_identifier_valid() {
+        // Valid identifiers should pass
+        assert!(validate_sql_identifier("table_name", "test").is_ok());
+        assert!(validate_sql_identifier("_underscore", "test").is_ok());
+        assert!(validate_sql_identifier("table123", "test").is_ok());
+        assert!(validate_sql_identifier("CamelCase", "test").is_ok());
+        assert!(validate_sql_identifier("snake_case_123", "test").is_ok());
+    }
+
+    #[test]
+    fn test_validate_sql_identifier_empty() {
+        // Empty identifier should fail
+        let result = validate_sql_identifier("", "test_name");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+    }
+
+    #[test]
+    fn test_validate_sql_identifier_too_long() {
+        // Identifier exceeding 63 characters should fail
+        let long_name = "a".repeat(64);
+        let result = validate_sql_identifier(&long_name, "test_name");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("63 character limit"));
+    }
+
+    #[test]
+    fn test_validate_sql_identifier_starts_with_number() {
+        // Identifier starting with number should fail
+        let result = validate_sql_identifier("123table", "test_name");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must start with a letter or underscore"));
+    }
+
+    #[test]
+    fn test_validate_sql_identifier_invalid_characters() {
+        // Identifiers with special characters should fail
+        let test_cases = vec![
+            "table-name",  // hyphen
+            "table.name",  // dot
+            "table name",  // space
+            "table;name",  // semicolon
+            "table'name",  // quote
+            "table\"name", // double quote
+            "table(name)", // parentheses
+            "table*name",  // asterisk
+            "table/name",  // slash
+        ];
+
+        for test_case in test_cases {
+            let result = validate_sql_identifier(test_case, "test_name");
+            assert!(result.is_err(), "Expected '{}' to be invalid", test_case);
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid character"));
+        }
+    }
+
+    #[test]
+    fn test_validate_sql_identifier_boundary_cases() {
+        // Test boundary cases
+        assert!(validate_sql_identifier("a", "test").is_ok()); // Single character
+        assert!(validate_sql_identifier("_", "test").is_ok()); // Just underscore
+
+        let exactly_63 = "a".repeat(63);
+        assert!(validate_sql_identifier(&exactly_63, "test").is_ok());
     }
 }
