@@ -130,7 +130,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist -i python ${{ contains(matrix.target, 'windows') && '--features generate-import-lib' || '' }}
+          args: --release --out dist -i python --features extension-module${{ contains(matrix.target, 'windows') && ',generate-import-lib' || '' }}
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
