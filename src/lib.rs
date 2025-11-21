@@ -1,3 +1,11 @@
+//! # JSON Register
+//!
+//! `json-register` is a library for registering JSON objects into a PostgreSQL database
+//! with canonicalisation and caching. It ensures that semantically equivalent JSON objects
+//! are stored only once and assigned a unique identifier.
+//!
+//! This library provides both a Rust API and Python bindings.
+
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(feature = "python")]
@@ -17,12 +25,30 @@ pub use canonicalise::canonicalise;
 pub use db::Db;
 pub use errors::JsonRegisterError;
 
+/// The main registry structure that coordinates database interactions and caching.
+///
+/// This struct maintains a connection pool to the PostgreSQL database and an
+/// in-memory LRU cache to speed up lookups of frequently accessed JSON objects.
 pub struct Register {
     db: Db,
     cache: Cache,
 }
 
 impl Register {
+    /// Creates a new `Register` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `connection_string` - The PostgreSQL connection string.
+    /// * `table_name` - The name of the table where JSON objects are stored.
+    /// * `id_column` - The name of the column storing the unique ID.
+    /// * `jsonb_column` - The name of the column storing the JSONB data.
+    /// * `pool_size` - The maximum number of connections in the database pool.
+    /// * `lru_cache_size` - The capacity of the in-memory LRU cache.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the new `Register` instance or a `JsonRegisterError`.
     pub async fn new(
         connection_string: &str,
         table_name: &str,
@@ -44,6 +70,19 @@ impl Register {
         Ok(Self { db, cache })
     }
 
+    /// Registers a single JSON object.
+    ///
+    /// This method canonicalises the input JSON, checks the cache, and if necessary,
+    /// inserts the object into the database. It returns the unique ID associated
+    /// with the JSON object.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The JSON value to register.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the unique ID (i64) or a `JsonRegisterError`.
     pub async fn register_object(&self, value: &Value) -> Result<i64, JsonRegisterError> {
         let canonical = canonicalise(value).map_err(JsonRegisterError::SerdeError)?;
 
@@ -62,6 +101,20 @@ impl Register {
         Ok(id)
     }
 
+    /// Registers a batch of JSON objects.
+    ///
+    /// This method processes multiple JSON objects efficiently. It first checks the
+    /// cache for all items. If any are missing, it performs a batch insert/select
+    /// operation in the database. The order of the returned IDs corresponds to the
+    /// order of the input values.
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - A slice of JSON values to register.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of unique IDs or a `JsonRegisterError`.
     pub async fn register_batch_objects(
         &self,
         values: &[Value],
@@ -71,7 +124,7 @@ impl Register {
             canonicals.push(canonicalise(value).map_err(JsonRegisterError::SerdeError)?);
         }
 
-        // Check cache
+        // Check cache for existing entries
         let mut all_cached = true;
         let mut cached_ids = Vec::with_capacity(values.len());
         for canonical in &canonicals {
@@ -87,14 +140,14 @@ impl Register {
             return Ok(cached_ids);
         }
 
-        // Not all cached, go to DB
+        // If not all items are in the cache, query the database
         let ids = self
             .db
             .register_batch_objects(&canonicals)
             .await
             .map_err(JsonRegisterError::DbError)?;
 
-        // Update cache
+        // Update the cache with the newly retrieved IDs
         for (canonical, id) in canonicals.into_iter().zip(ids.iter()) {
             self.cache.put(canonical, *id);
         }
@@ -105,6 +158,7 @@ impl Register {
 
 #[cfg(feature = "python")]
 #[pyclass(name = "JsonRegister")]
+/// Python wrapper for the `Register` struct.
 struct PyJsonRegister {
     inner: Register,
     rt: Runtime,
@@ -127,6 +181,7 @@ impl PyJsonRegister {
         pool_size=10
     ))]
     #[allow(clippy::too_many_arguments)]
+    /// Initializes a new `JsonRegister` instance from Python.
     fn new(
         database_name: String,
         database_host: String,
@@ -167,6 +222,7 @@ impl PyJsonRegister {
         Ok(PyJsonRegister { inner, rt })
     }
 
+    /// Registers a single JSON object from Python.
     fn register_object(&self, json_obj: &Bound<'_, PyAny>) -> PyResult<i64> {
         let value: Value = pythonize::depythonize(json_obj)
             .map_err(|e| JsonRegisterError::SerializationError(e.to_string()))?;
@@ -175,6 +231,7 @@ impl PyJsonRegister {
             .map_err(Into::into)
     }
 
+    /// Registers a batch of JSON objects from Python.
     fn register_batch_objects(&self, json_objects: &Bound<'_, PyList>) -> PyResult<Vec<i64>> {
         let mut values = Vec::with_capacity(json_objects.len());
         for obj in json_objects {
@@ -190,6 +247,7 @@ impl PyJsonRegister {
 
 #[cfg(feature = "python")]
 #[pyfunction(name = "canonicalise")]
+/// Canonicalises a Python object into its JSON string representation (as bytes).
 fn py_canonicalise(json_obj: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     let value: Value = pythonize::depythonize(json_obj)
         .map_err(|e| JsonRegisterError::SerializationError(e.to_string()))?;

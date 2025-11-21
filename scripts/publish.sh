@@ -37,17 +37,17 @@ done
 
 echo "Starting publication process..."
 
-# Ensure we are in the project root
+# Ensures execution from the project root directory.
 if [ ! -f "Cargo.toml" ]; then
     echo "Error: Cargo.toml not found. Please run this script from the project root."
     exit 1
 fi
 
-# 1. Run Tests
+# 1. Execute the test suite.
 echo "Running tests..."
 cargo test --all-features
 
-# 2. Publish to Crates.io
+# 2. Publish the crate to Crates.io.
 if [ "$PUBLISH_CRATES" = true ]; then
     echo "Publishing to Crates.io..."
     if [ "$DRY_RUN" = true ]; then
@@ -57,7 +57,7 @@ if [ "$PUBLISH_CRATES" = true ]; then
     fi
 fi
 
-# 3. Publish to PyPI
+# 3. Build and publish the Python package to PyPI.
 if [ "$PUBLISH_PYPI" = true ] || [ "$PUBLISH_TEST_PYPI" = true ]; then
     echo "Building and Publishing to PyPI..."
     
@@ -67,12 +67,12 @@ if [ "$PUBLISH_PYPI" = true ] || [ "$PUBLISH_TEST_PYPI" = true ]; then
     fi
 
     if [ "$DRY_RUN" = true ]; then
-        # Just build
+        # Performs a build without uploading artifacts.
         maturin build --release
         echo "Dry run: skipping upload"
     else
-        # Build and upload
-        # Note: This requires MATURIN_PYPI_TOKEN or login
+        # Builds and uploads the package.
+        # Note: Requires MATURIN_PYPI_TOKEN environment variable or an active login session.
         maturin publish $MATURIN_ARGS
     fi
 fi

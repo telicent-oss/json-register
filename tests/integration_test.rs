@@ -4,6 +4,9 @@ use std::collections::HashSet;
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Retrieves database configuration from environment variables.
+///
+/// Defaults are provided for local testing convenience.
 fn get_config() -> (
     String,
     String,
@@ -30,6 +33,10 @@ fn get_config() -> (
     )
 }
 
+/// Creates a `Register` instance for testing.
+///
+/// This function sets up a unique table for each test run (based on the suffix)
+/// to ensure test isolation and avoid concurrency issues.
 async fn create_register(suffix: &str) -> Register {
     let (db_name, host, port, user, password, cache_size, base_table, id_col, json_col, pool_size) =
         get_config();
@@ -39,7 +46,7 @@ async fn create_register(suffix: &str) -> Register {
         user, password, host, port, db_name
     );
 
-    // Ensure table exists
+    // Ensure the test table exists.
     let pool = sqlx::PgPool::connect(&conn_str)
         .await
         .expect("Failed to connect to DB for setup");
@@ -70,6 +77,7 @@ fn get_timestamp() -> u128 {
 #[tokio::test]
 #[ignore]
 async fn test_register_object() {
+    // Verifies that registering the same object twice returns the same ID.
     let register = create_register("obj").await;
     let obj = json!({"name": "Alice", "age": 30});
 
@@ -82,6 +90,7 @@ async fn test_register_object() {
 #[tokio::test]
 #[ignore]
 async fn test_register_batch_objects() {
+    // Verifies that batch registration returns unique IDs for unique objects.
     let register = create_register("batch").await;
     let objects = vec![
         json!({"name": "Alice"}),
@@ -99,6 +108,8 @@ async fn test_register_batch_objects() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_order_preserved_all_new() {
+    // Verifies that the order of returned IDs matches the order of input objects
+    // when all objects are new.
     let register = create_register("order_new").await;
     let timestamp = get_timestamp();
 
@@ -125,6 +136,8 @@ async fn test_batch_order_preserved_all_new() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_order_preserved_mixed_existing() {
+    // Verifies that the order of returned IDs matches the order of input objects
+    // when some objects already exist in the database.
     let register = create_register("order_mixed").await;
     let timestamp = get_timestamp();
 
@@ -157,6 +170,7 @@ async fn test_batch_order_preserved_mixed_existing() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_different_key_orders_same_ids() {
+    // Verifies that objects with different key orders are treated as identical.
     let register = create_register("key_order").await;
     let timestamp = get_timestamp();
 
@@ -180,6 +194,7 @@ async fn test_batch_different_key_orders_same_ids() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_large_order_preservation() {
+    // Verifies order preservation for a larger batch of objects.
     let register = create_register("large").await;
     let timestamp = get_timestamp();
 
@@ -208,6 +223,7 @@ async fn test_batch_large_order_preservation() {
 #[tokio::test]
 #[ignore]
 async fn test_batch_order_preservation_stress() {
+    // Stress test for order preservation with a mix of pre-registered, new, and duplicate objects.
     let register = create_register("stress").await;
     let timestamp = get_timestamp();
 

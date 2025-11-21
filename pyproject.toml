@@ -6,6 +6,11 @@ build-backend = "maturin"
 name = "json-register"
 dynamic = ["version"]
 requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
 dependencies = []
 
 [project.optional-dependencies]
@@ -32,13 +37,6 @@ ignore = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-classifiers = [
-    "Programming Language :: Rust",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
-]
-dependencies = []
 
 [tool.maturin]
 features = ["python", "pyo3/extension-module"]

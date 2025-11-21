@@ -1,6 +1,11 @@
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{PgPool, Row};
 
+/// Handles database interactions for registering JSON objects.
+///
+/// This struct manages the connection pool and executes SQL queries to insert
+/// or retrieve JSON objects. It uses optimized queries to handle concurrency
+/// and minimize round-trips.
 pub struct Db {
     pool: PgPool,
     register_query: String,
@@ -8,6 +13,19 @@ pub struct Db {
 }
 
 impl Db {
+    /// Creates a new `Db` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `connection_string` - The PostgreSQL connection string.
+    /// * `table_name` - The name of the table.
+    /// * `id_column` - The name of the ID column.
+    /// * `jsonb_column` - The name of the JSONB column.
+    /// * `pool_size` - The maximum number of connections in the pool.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the new `Db` instance or a `sqlx::Error`.
     pub async fn new(
         connection_string: &str,
         table_name: &str,
@@ -20,6 +38,9 @@ impl Db {
             .connect(connection_string)
             .await?;
 
+        // Query to register a single object.
+        // It attempts to insert the object. If it exists (ON CONFLICT), it does nothing.
+        // Then it selects the ID, either from the inserted row or the existing row.
         let register_query = format!(
             r#"
             WITH inserted AS (
@@ -37,6 +58,10 @@ impl Db {
             "#
         );
 
+        // Query to register a batch of objects.
+        // It uses `unnest` to handle the array of inputs, attempts to insert new ones,
+        // and then joins the results to ensure every input gets its corresponding ID
+        // in the correct order.
         let register_batch_query = format!(
             r#"
             WITH input_objects AS (
@@ -71,6 +96,15 @@ impl Db {
         })
     }
 
+    /// Registers a single JSON object string in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `json_str` - The canonicalised JSON string.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the ID (i64) or a `sqlx::Error`.
     pub async fn register_object(&self, json_str: &str) -> Result<i64, sqlx::Error> {
         let row: PgRow = sqlx::query(&self.register_query)
             .bind(json_str) // $1
@@ -81,6 +115,15 @@ impl Db {
         row.try_get(0)
     }
 
+    /// Registers a batch of JSON object strings in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `json_strs` - A slice of canonicalised JSON strings.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of IDs or a `sqlx::Error`.
     pub async fn register_batch_objects(
         &self,
         json_strs: &[String],

@@ -1,11 +1,22 @@
 use serde_json::Value;
 
-/// Convert a JSON object to its canonical string representation.
+/// Converts a JSON object to its canonical string representation.
 ///
-/// This function ensures that:
-/// - Object keys are sorted alphabetically (serde_json::Value uses BTreeMap by default)
-/// - Whitespace is removed (serde_json::to_string produces compact JSON)
-/// - Unicode characters are preserved (serde_json default behavior)
+/// This function ensures that semantically equivalent JSON objects produce
+/// the same string output. The canonicalisation rules are:
+/// - **Key Sorting**: Object keys are sorted alphabetically. `serde_json::Value`
+///   uses a `BTreeMap` for objects, which guarantees this order.
+/// - **Whitespace Removal**: The output is compact, with no extra whitespace.
+/// - **Unicode Preservation**: Unicode characters are preserved as-is (not escaped),
+///   consistent with standard JSON serialization practices in Rust.
+///
+/// # Arguments
+///
+/// * `json` - The JSON value to canonicalise.
+///
+/// # Returns
+///
+/// A `Result` containing the canonicalised string or a `serde_json::Error`.
 pub fn canonicalise(json: &Value) -> Result<String, serde_json::Error> {
     serde_json::to_string(json)
 }
@@ -17,6 +28,7 @@ mod tests {
 
     #[test]
     fn test_canonicalise_simple_object() {
+        // Verifies that a simple object is correctly serialized with sorted keys.
         let obj = json!({"b": 2, "a": 1});
         let result = canonicalise(&obj).unwrap();
         assert_eq!(result, r#"{"a":1,"b":2}"#);
@@ -24,6 +36,8 @@ mod tests {
 
     #[test]
     fn test_canonicalise_different_key_order_same_result() {
+        // Verifies that objects with the same data but different key orders
+        // produce the same canonical string.
         let obj1 = json!({"name": "Alice", "age": 30});
         let obj2 = json!({"age": 30, "name": "Alice"});
         assert_eq!(canonicalise(&obj1).unwrap(), canonicalise(&obj2).unwrap());
@@ -31,6 +45,7 @@ mod tests {
 
     #[test]
     fn test_canonicalise_nested_object() {
+        // Verifies that nested objects are also canonicalised recursively.
         let obj = json!({"outer": {"b": 2, "a": 1}});
         let result = canonicalise(&obj).unwrap();
         assert_eq!(result, r#"{"outer":{"a":1,"b":2}}"#);
@@ -38,6 +53,7 @@ mod tests {
 
     #[test]
     fn test_canonicalise_deeply_nested() {
+        // Verifies canonicalisation on a deeply nested structure.
         let obj =
             json!({"level1": {"level2": {"level3": {"level4": {"d": 4, "c": 3, "b": 2, "a": 1}}}}});
         let result = canonicalise(&obj).unwrap();
@@ -49,6 +65,7 @@ mod tests {
 
     #[test]
     fn test_canonicalise_array_order_preserved() {
+        // Verifies that the order of elements in an array is preserved.
         let obj = json!({"items": [3, 1, 2]});
         let result = canonicalise(&obj).unwrap();
         assert_eq!(result, r#"{"items":[3,1,2]}"#);
@@ -56,9 +73,10 @@ mod tests {
 
     #[test]
     fn test_canonicalise_array_with_objects() {
+        // Verifies that arrays containing objects are handled correctly,
+        // preserving array order but sorting keys within the objects.
         let obj = json!({"users": [{"name": "Bob", "age": 25}, {"name": "Alice", "age": 30}]});
         let result = canonicalise(&obj).unwrap();
-        // Array order preserved, but object keys sorted
         assert_eq!(
             result,
             r#"{"users":[{"age":25,"name":"Bob"},{"age":30,"name":"Alice"}]}"#
@@ -67,11 +85,9 @@ mod tests {
 
     #[test]
     fn test_canonicalise_primitives() {
+        // Verifies canonicalisation of primitive JSON types.
         assert_eq!(canonicalise(&json!("hello")).unwrap(), r#""hello""#);
         assert_eq!(canonicalise(&json!(42)).unwrap(), "42");
-        // Note: serde_json might format floats differently than Python's json.dumps
-        // Python: 3.14 -> "3.14"
-        // Rust: 3.14 -> "3.14"
         assert_eq!(canonicalise(&json!(3.14)).unwrap(), "3.14");
         assert_eq!(canonicalise(&json!(true)).unwrap(), "true");
         assert_eq!(canonicalise(&json!(false)).unwrap(), "false");
@@ -80,35 +96,32 @@ mod tests {
 
     #[test]
     fn test_canonicalise_empty_structures() {
+        // Verifies canonicalisation of empty objects and arrays.
         assert_eq!(canonicalise(&json!({})).unwrap(), "{}");
         assert_eq!(canonicalise(&json!([])).unwrap(), "[]");
     }
 
     #[test]
     fn test_canonicalise_number_formatting() {
+        // Verifies consistent number formatting.
         assert_eq!(canonicalise(&json!(42)).unwrap(), "42");
         assert_eq!(canonicalise(&json!(0)).unwrap(), "0");
         assert_eq!(canonicalise(&json!(-10)).unwrap(), "-10");
 
         assert_eq!(canonicalise(&json!(3.14)).unwrap(), "3.14");
-        // serde_json preserves 0.0 as 0.0
         assert_eq!(canonicalise(&json!(0.0)).unwrap(), "0.0");
         assert_eq!(canonicalise(&json!(-2.5)).unwrap(), "-2.5");
 
-        // Scientific notation might differ slightly depending on precision, but 1e10 is usually 10000000000.0
-        // Let's check what serde_json does.
-        // serde_json::to_string(&json!(1e10)) -> "10000000000.0"
+        // Scientific notation check (1e10 -> 10000000000.0)
         assert_eq!(canonicalise(&json!(1e10)).unwrap(), "10000000000.0");
     }
 
     #[test]
     fn test_canonicalise_unicode() {
+        // Verifies that Unicode characters are preserved and not escaped.
         let obj = json!({"russian": "Алиса", "emoji": "🎉", "chinese": "你好", "arabic": "مرحبا"});
         let result = canonicalise(&obj).unwrap();
 
-        // serde_json by default does NOT escape unicode characters unless configured otherwise,
-        // but to_string() usually produces compact JSON.
-        // Let's verify the content is present.
         assert!(result.contains("Алиса"));
         assert!(result.contains("🎉"));
         assert!(result.contains("你好"));
@@ -117,6 +130,7 @@ mod tests {
 
     #[test]
     fn test_canonicalise_special_characters() {
+        // Verifies that special characters (quotes, newlines, etc.) are properly escaped.
         let obj = json!({
             "quote": "He said \"hello\"",
             "newline": "line1\nline2",
@@ -125,18 +139,15 @@ mod tests {
         });
         let result = canonicalise(&obj).unwrap();
 
-        // Special characters should be properly escaped
-        // Note: Rust raw strings might make this tricky to assert exactly without escaping the assertion string too.
-        // Expected: "quote":"He said \"hello\""
         assert!(result.contains(r#""quote":"He said \"hello\"""#));
         assert!(result.contains(r#"\n"#));
         assert!(result.contains(r#"\t"#));
-        // Backslash is escaped as \\
         assert!(result.contains(r#"\\"#));
     }
 
     #[test]
     fn test_canonicalise_mixed_types() {
+        // Verifies canonicalisation of an object containing mixed types.
         let obj = json!({
             "string": "hello",
             "number": 42,
@@ -154,6 +165,7 @@ mod tests {
 
     #[test]
     fn test_canonicalise_with_arrays() {
+        // Verifies complex structure with arrays and objects.
         let obj = json!({"z_last": [{"b": 2, "a": 1}, {"d": 4, "c": 3}], "a_first": [3, 2, 1]});
         let result = canonicalise(&obj).unwrap();
 

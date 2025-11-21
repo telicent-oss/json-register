@@ -4,11 +4,15 @@ import pytest
 from json_register import JsonRegister
 
 
-# Helper to parse DATABASE_URL
 def get_db_config():
+    """
+    Parses the DATABASE_URL environment variable to extract connection details.
+
+    Returns:
+        dict: A dictionary containing database connection parameters, or None if parsing fails.
+    """
     db_url = os.environ.get("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/json_register_test")
-    # Simple parsing
-    # postgres://user:pass@host:port/dbname
+    # Simple parsing logic for: postgres://user:pass@host:port/dbname
     try:
         if "://" in db_url:
             prefix, rest = db_url.split("://")
@@ -52,6 +56,10 @@ def get_db_config():
 
 @pytest.fixture
 def db_config():
+    """
+    Pytest fixture to provide database configuration.
+    Skips tests if the configuration is invalid.
+    """
     config = get_db_config()
     if not config:
         pytest.skip("Invalid or missing DATABASE_URL")
@@ -59,11 +67,15 @@ def db_config():
 
 @pytest.fixture
 def register(db_config):
-    # Create a unique table name for each test run?
-    # For simplicity, use a fixed test table.
+    """
+    Pytest fixture to initialize the JsonRegister instance and ensure the test table exists.
+    """
+    # Use a fixed table name for simplicity in Python tests.
+    # Note: In a real concurrent environment, unique table names per test would be safer.
     table_name = "json_objects_test_py"
 
-    # Ensure table exists using psycopg (since we can't rely on the Rust code to create it yet)
+    # Ensure the table exists using psycopg.
+    # This is necessary because the Rust extension expects the table to exist.
     try:
         import psycopg
         conn_str = f"postgresql://{db_config['database_user']}:{db_config['database_password']}@{db_config['database_host']}:{db_config['database_port']}/{db_config['database_name']}"
@@ -77,9 +89,7 @@ def register(db_config):
                 """)
             conn.commit()
     except ImportError:
-        # If psycopg is not available, we might fail if the table doesn't exist.
-        # But we should have it installed in the dev environment.
-        print("Warning: psycopg not found, skipping table creation")
+        print("Warning: psycopg not found, skipping table creation. Tests may fail if table does not exist.")
     except Exception as e:
         print(f"Warning: Failed to create table: {e}")
 
@@ -101,6 +111,9 @@ def register(db_config):
         pytest.skip(f"Failed to connect to DB: {e}")
 
 def test_register_object(register):
+    """
+    Verifies that registering a single object works and returns a consistent ID.
+    """
     obj = {"a": 1, "b": 2}
     id1 = register.register_object(obj)
     assert isinstance(id1, int)
@@ -115,6 +128,9 @@ def test_register_object(register):
     assert id1 != id3
 
 def test_register_batch_objects(register):
+    """
+    Verifies that batch registration handles multiple objects correctly.
+    """
     objs = [{"a": 1}, {"b": 2}, {"a": 1}]
     ids = register.register_batch_objects(objs)
     assert len(ids) == 3
@@ -122,6 +138,9 @@ def test_register_batch_objects(register):
     assert ids[0] != ids[1]
 
 def test_batch_order_preservation(register):
+    """
+    Verifies that the order of IDs returned by batch registration matches the input order.
+    """
     # Create a list of objects
     objs = [{"k": i} for i in range(100)]
     ids = register.register_batch_objects(objs)
@@ -140,6 +159,9 @@ def test_batch_order_preservation(register):
     assert ids2[:50] == ids[50:]
 
 def test_types_roundtrip(register):
+    """
+    Verifies that different JSON types are handled correctly and distinguished.
+    """
     # Test that we can register various types and they are handled correctly
     id1 = register.register_object({"a": 1})
     id2 = register.register_object({"a": "1"})

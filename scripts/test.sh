@@ -1,25 +1,27 @@
 #!/bin/bash
 set -e
 
-# Activate venv if it exists
+# Activates the virtual environment if it exists.
 if [ -d ".venv" ]; then
     source .venv/bin/activate
 fi
 
 echo "Running Rust tests..."
-# Run Rust tests (excluding Python features to avoid linking issues)
+# Executes Rust unit tests.
+# Note: Excludes default features to prevent linking issues with the Python library during binary test execution.
 cargo test --no-default-features
 
 if [ -n "$DATABASE_URL" ] || [ -n "$TEST_DB_HOST" ]; then
     echo "Running Rust integration tests..."
-    # Note: This assumes the DB is configured according to TEST_DB_* env vars or defaults (localhost:5432)
+    # Executes Rust integration tests if database configuration is present.
+    # Note: Assumes the database is configured via TEST_DB_* environment variables or defaults (localhost:5432).
     cargo test --test integration_test --no-default-features -- --ignored
 else
     echo "Skipping Rust integration tests (DATABASE_URL or TEST_DB_HOST not set)"
 fi
 
 echo "Building and installing Python extension..."
-# Ensure we are in a venv or have maturin installed
+# Builds and installs the Python extension using maturin.
 maturin develop
 
 echo "Running Python tests..."
