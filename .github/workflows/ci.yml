@@ -130,7 +130,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist ${{ !contains(matrix.target, 'aarch64-pc-windows-msvc') && '-i python' || '' }} --features extension-module${{ contains(matrix.target, 'windows') && ',generate-import-lib' || '' }}
+          args: --release --out dist ${{ (contains(matrix.target, 'aarch64') && !contains(matrix.target, 'apple')) && '' || '-i python' }} --features extension-module${{ contains(matrix.target, 'windows') && ',generate-import-lib' || '' }}
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
