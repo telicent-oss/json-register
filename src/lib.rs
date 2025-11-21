@@ -51,6 +51,58 @@ pub fn build_connection_string(
     )
 }
 
+/// Sanitizes a connection string by replacing the password with asterisks.
+///
+/// This prevents passwords from leaking in error messages, logs, or stack traces.
+///
+/// # Arguments
+///
+/// * `connection_string` - The connection string to sanitize
+///
+/// # Returns
+///
+/// A sanitized connection string with the password replaced by "****"
+///
+/// # Example
+///
+/// ```
+/// use json_register::sanitize_connection_string;
+/// let sanitized = sanitize_connection_string("postgres://user:secret@localhost:5432/db");
+/// assert_eq!(sanitized, "postgres://user:****@localhost:5432/db");
+/// ```
+pub fn sanitize_connection_string(connection_string: &str) -> String {
+    // Handle postgres:// or postgresql:// schemes
+    if let Some(scheme_end) = connection_string.find("://") {
+        let scheme = &connection_string[..scheme_end + 3];
+        let rest = &connection_string[scheme_end + 3..];
+
+        // Find the LAST @ symbol before any / (to handle @ in passwords)
+        // The @ separates user:password from host:port/db
+        let at_idx = if let Some(slash_idx) = rest.find('/') {
+            // Find last @ before the slash
+            rest[..slash_idx].rfind('@')
+        } else {
+            // No slash, find last @ in entire string
+            rest.rfind('@')
+        };
+
+        if let Some(at_idx) = at_idx {
+            let user_pass = &rest[..at_idx];
+            let host_db = &rest[at_idx..];
+
+            // Find FIRST : separator between user and password
+            // (username shouldn't have :, but password might)
+            if let Some(colon_idx) = user_pass.find(':') {
+                let user = &user_pass[..colon_idx];
+                return format!("{}{}:****{}", scheme, user, host_db);
+            }
+        }
+    }
+
+    // If parsing fails, return as-is (no password to hide)
+    connection_string.to_string()
+}
+
 /// The main registry structure that coordinates database interactions and caching.
 ///
 /// This struct maintains a connection pool to the PostgreSQL database and an
@@ -189,6 +241,69 @@ impl Register {
         }
 
         Ok(ids)
+    }
+
+    /// Returns the current size of the connection pool.
+    ///
+    /// This is the total number of connections (both idle and active) currently
+    /// in the pool. Useful for monitoring pool utilization.
+    ///
+    /// # Returns
+    ///
+    /// The number of connections in the pool.
+    pub fn pool_size(&self) -> usize {
+        self.db.pool_size()
+    }
+
+    /// Returns the number of idle connections in the pool.
+    ///
+    /// Idle connections are available for immediate use. A low idle count
+    /// during high load may indicate the pool is undersized.
+    ///
+    /// # Returns
+    ///
+    /// The number of idle connections.
+    pub fn idle_connections(&self) -> usize {
+        self.db.idle_connections()
+    }
+
+    /// Checks if the connection pool is closed.
+    ///
+    /// A closed pool cannot create new connections and will error on acquire attempts.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the pool is closed, `false` otherwise.
+    pub fn is_closed(&self) -> bool {
+        self.db.is_closed()
+    }
+
+    /// Returns the number of cache hits.
+    ///
+    /// # Returns
+    ///
+    /// The total number of successful cache lookups.
+    pub fn cache_hits(&self) -> u64 {
+        self.cache.hits()
+    }
+
+    /// Returns the number of cache misses.
+    ///
+    /// # Returns
+    ///
+    /// The total number of unsuccessful cache lookups.
+    pub fn cache_misses(&self) -> u64 {
+        self.cache.misses()
+    }
+
+    /// Returns the cache hit rate as a percentage.
+    ///
+    /// # Returns
+    ///
+    /// The hit rate as a float between 0.0 and 100.0.
+    /// Returns 0.0 if no cache operations have occurred.
+    pub fn cache_hit_rate(&self) -> f64 {
+        self.cache.hit_rate()
     }
 }
 
@@ -343,6 +458,50 @@ impl PyJsonRegister {
             .block_on(self.inner.register_batch_objects(&values))
             .map_err(Into::into)
     }
+
+    /// Returns the current size of the connection pool.
+    ///
+    /// This is the total number of connections (both idle and active) currently
+    /// in the pool. Useful for monitoring pool utilization.
+    fn pool_size(&self) -> usize {
+        self.inner.pool_size()
+    }
+
+    /// Returns the number of idle connections in the pool.
+    ///
+    /// Idle connections are available for immediate use. A low idle count
+    /// during high load may indicate the pool is undersized.
+    fn idle_connections(&self) -> usize {
+        self.inner.idle_connections()
+    }
+
+    /// Checks if the connection pool is closed.
+    ///
+    /// A closed pool cannot create new connections and will error on acquire attempts.
+    fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+
+    /// Returns the number of cache hits.
+    ///
+    /// This is the total number of successful cache lookups since the instance was created.
+    fn cache_hits(&self) -> u64 {
+        self.inner.cache_hits()
+    }
+
+    /// Returns the number of cache misses.
+    ///
+    /// This is the total number of unsuccessful cache lookups since the instance was created.
+    fn cache_misses(&self) -> u64 {
+        self.inner.cache_misses()
+    }
+
+    /// Returns the cache hit rate as a percentage.
+    ///
+    /// Returns a value between 0.0 and 100.0. Returns 0.0 if no cache operations have occurred.
+    fn cache_hit_rate(&self) -> f64 {
+        self.inner.cache_hit_rate()
+    }
 }
 
 #[cfg(feature = "python")]
@@ -363,4 +522,52 @@ fn json_register(_m: &Bound<'_, PyModule>) -> PyResult<()> {
     _m.add_class::<PyJsonRegister>()?;
     _m.add_function(wrap_pyfunction!(py_canonicalise, _m)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod connection_tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_connection_string_with_password() {
+        let input = "postgres://user:secret123@localhost:5432/mydb";
+        let expected = "postgres://user:****@localhost:5432/mydb";
+        assert_eq!(sanitize_connection_string(input), expected);
+    }
+
+    #[test]
+    fn test_sanitize_connection_string_postgresql_scheme() {
+        let input = "postgresql://admin:p@ssw0rd@db.example.com:5432/production";
+        let expected = "postgresql://admin:****@db.example.com:5432/production";
+        assert_eq!(sanitize_connection_string(input), expected);
+    }
+
+    #[test]
+    fn test_sanitize_connection_string_no_password() {
+        // No password in connection string
+        let input = "postgres://user@localhost:5432/mydb";
+        assert_eq!(sanitize_connection_string(input), input);
+    }
+
+    #[test]
+    fn test_sanitize_connection_string_with_special_chars() {
+        let input = "postgres://user:p@ss:word@localhost:5432/mydb";
+        let expected = "postgres://user:****@localhost:5432/mydb";
+        assert_eq!(sanitize_connection_string(input), expected);
+    }
+
+    #[test]
+    fn test_sanitize_connection_string_not_postgres() {
+        // Works with other schemes too
+        let input = "mysql://user:password@localhost:3306/mydb";
+        let expected = "mysql://user:****@localhost:3306/mydb";
+        assert_eq!(sanitize_connection_string(input), expected);
+    }
+
+    #[test]
+    fn test_sanitize_connection_string_malformed() {
+        // Malformed string - return as-is
+        let input = "not a connection string";
+        assert_eq!(sanitize_connection_string(input), input);
+    }
 }

@@ -107,7 +107,13 @@ impl Db {
             // Max lifetime: close connections after max age (default: 30 min)
             .max_lifetime(max_lifetime.or(Some(Duration::from_secs(1800))))
             .connect(connection_string)
-            .await?;
+            .await
+            .map_err(|e| {
+                // Sanitize any connection strings that might appear in error messages
+                let error_msg = e.to_string();
+                let sanitized_msg = crate::sanitize_connection_string(&error_msg);
+                sqlx::Error::Configuration(sanitized_msg.into())
+            })?;
 
         // Query to register a single object.
         // It attempts to insert the object. If it exists (ON CONFLICT), it does nothing.
@@ -215,6 +221,41 @@ impl Db {
         }
 
         Ok(ids)
+    }
+
+    /// Returns the current size of the connection pool.
+    ///
+    /// This is the total number of connections (both idle and active) currently
+    /// in the pool. Useful for monitoring pool utilization.
+    ///
+    /// # Returns
+    ///
+    /// The number of connections in the pool.
+    pub fn pool_size(&self) -> usize {
+        self.pool.size() as usize
+    }
+
+    /// Returns the number of idle connections in the pool.
+    ///
+    /// Idle connections are available for immediate use. A low idle count
+    /// during high load may indicate the pool is undersized.
+    ///
+    /// # Returns
+    ///
+    /// The number of idle connections.
+    pub fn idle_connections(&self) -> usize {
+        self.pool.num_idle()
+    }
+
+    /// Checks if the connection pool is closed.
+    ///
+    /// A closed pool cannot create new connections and will error on acquire attempts.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the pool is closed, `false` otherwise.
+    pub fn is_closed(&self) -> bool {
+        self.pool.is_closed()
     }
 }
 

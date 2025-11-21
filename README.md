@@ -13,6 +13,9 @@ This library is written in Rust and provides native bindings for Python, allowin
 *   **PostgreSQL Integration**: Efficiently stores and retrieves JSON data using PostgreSQL's `JSONB` type.
 *   **Batch Processing**: Supports batch registration of objects to reduce network round-trips and improve throughput.
 *   **Cross-Language Support**: Provides a native Rust API and a Python extension module.
+*   **Security**: SQL injection prevention through identifier validation and automatic password sanitization in error messages.
+*   **Configurable Timeouts**: Optional connection pool timeouts for acquire, idle, and maximum lifetime settings.
+*   **Monitoring**: Query methods for connection pool metrics and cache hit rate statistics.
 
 ## Installation
 
@@ -64,6 +67,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         jsonb_column,
         pool_size,
         lru_cache_size,
+        None, // acquire_timeout_secs (defaults to 5)
+        None, // idle_timeout_secs (defaults to 600)
+        None, // max_lifetime_secs (defaults to 1800)
     ).await?;
 
     // Register a single object
@@ -136,6 +142,93 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+## Configuration
+
+### Timeout Parameters
+
+Optional timeout parameters can be specified when initializing the register. All timeouts are in seconds.
+
+*   `acquire_timeout_secs`: Timeout for acquiring a connection from the pool (default: 5)
+*   `idle_timeout_secs`: Timeout before closing idle connections (default: 600)
+*   `max_lifetime_secs`: Maximum lifetime of a connection (default: 1800)
+
+### Rust Example with Custom Timeouts
+
+```rust
+let register = Register::new(
+    connection_string,
+    table_name,
+    id_column,
+    jsonb_column,
+    pool_size,
+    lru_cache_size,
+    Some(10),   // 10 second acquire timeout
+    Some(300),  // 5 minute idle timeout
+    Some(3600), // 1 hour max lifetime
+).await?;
+```
+
+### Python Example with Custom Timeouts
+
+```python
+register = JsonRegister(
+    database_name="dbname",
+    database_host="localhost",
+    database_port=5432,
+    database_user="user",
+    database_password="password",
+    acquire_timeout_secs=10,   # 10 second acquire timeout
+    idle_timeout_secs=300,     # 5 minute idle timeout
+    max_lifetime_secs=3600,    # 1 hour max lifetime
+)
+```
+
+## Monitoring
+
+The library provides methods to query connection pool and cache metrics. Applications can use these to integrate with monitoring systems such as Prometheus, OpenTelemetry, or custom logging.
+
+### Connection Pool Metrics
+
+*   `pool_size()`: Total number of connections in the pool (idle and active)
+*   `idle_connections()`: Number of idle connections available for use
+*   `is_closed()`: Whether the connection pool is closed
+
+### Cache Metrics
+
+*   `cache_hits()`: Total number of successful cache lookups
+*   `cache_misses()`: Total number of unsuccessful cache lookups
+*   `cache_hit_rate()`: Hit rate as a percentage (0.0 to 100.0)
+
+### Rust Monitoring Example
+
+```rust
+// Query pool metrics
+let total = register.pool_size();
+let idle = register.idle_connections();
+println!("Pool: {}/{} connections, {} idle", total, pool_size, idle);
+
+// Query cache metrics
+let hits = register.cache_hits();
+let misses = register.cache_misses();
+let rate = register.cache_hit_rate();
+println!("Cache: {} hits, {} misses ({:.2}% hit rate)", hits, misses, rate);
+```
+
+### Python Monitoring Example
+
+```python
+# Query pool metrics
+total = register.pool_size()
+idle = register.idle_connections()
+print(f"Pool: {total} connections, {idle} idle")
+
+# Query cache metrics
+hits = register.cache_hits()
+misses = register.cache_misses()
+rate = register.cache_hit_rate()
+print(f"Cache: {hits} hits, {misses} misses ({rate:.2f}% hit rate)")
 ```
 
 ## License
