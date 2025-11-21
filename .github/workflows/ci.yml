@@ -126,11 +126,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build wheels
+      - name: Build wheels (Linux/macOS)
+        if: runner.os != 'Windows'
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist ${{ (contains(matrix.target, 'aarch64') && !contains(matrix.target, 'apple')) && '' || '-i python' }} --features extension-module${{ contains(matrix.target, 'windows') && ',generate-import-lib' || '' }}
+          args: --release --out dist -i python --features extension-module
+          sccache: 'true'
+      - name: Build wheels (Windows)
+        if: runner.os == 'Windows'
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --features extension-module,generate-import-lib
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
