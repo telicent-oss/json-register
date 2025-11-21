@@ -19,7 +19,7 @@ python = ["dep:pyo3", "dep:pythonize"]
 extension-module = ["pyo3/extension-module", "python"]
 
 [dependencies]
-pyo3 = { version = "0.23.3", features = ["abi3-py38", "generate-import-lib"], optional = true }
+pyo3 = { version = "0.23.3", features = ["abi3-py38"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lru = "0.12"
@@ -27,6 +27,9 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid"
 tokio = { version = "1.0", features = ["full"] }
 thiserror = "2.0"
 pythonize = { version = "0.23", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+pyo3 = { version = "0.23.3", features = ["abi3-py38", "generate-import-lib"], optional = true }
 
 [dev-dependencies]
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "time"] }
