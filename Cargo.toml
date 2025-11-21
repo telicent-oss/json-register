@@ -16,6 +16,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["python"]
 python = ["dep:pyo3", "dep:pythonize"]
+extension-module = ["pyo3/extension-module", "python"]
 
 [dependencies]
 pyo3 = { version = "0.23.3", optional = true }

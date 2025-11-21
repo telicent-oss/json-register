@@ -39,4 +39,4 @@ ignore = []
 testpaths = ["tests"]
 
 [tool.maturin]
-features = ["python", "pyo3/extension-module"]
+features = ["extension-module"]
