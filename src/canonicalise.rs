@@ -88,7 +88,7 @@ mod tests {
         // Verifies canonicalisation of primitive JSON types.
         assert_eq!(canonicalise(&json!("hello")).unwrap(), r#""hello""#);
         assert_eq!(canonicalise(&json!(42)).unwrap(), "42");
-        assert_eq!(canonicalise(&json!(3.14)).unwrap(), "3.14");
+        assert_eq!(canonicalise(&json!(1.23)).unwrap(), "1.23");
         assert_eq!(canonicalise(&json!(true)).unwrap(), "true");
         assert_eq!(canonicalise(&json!(false)).unwrap(), "false");
         assert_eq!(canonicalise(&json!(null)).unwrap(), "null");
@@ -108,7 +108,7 @@ mod tests {
         assert_eq!(canonicalise(&json!(0)).unwrap(), "0");
         assert_eq!(canonicalise(&json!(-10)).unwrap(), "-10");
 
-        assert_eq!(canonicalise(&json!(3.14)).unwrap(), "3.14");
+        assert_eq!(canonicalise(&json!(1.23)).unwrap(), "1.23");
         assert_eq!(canonicalise(&json!(0.0)).unwrap(), "0.0");
         assert_eq!(canonicalise(&json!(-2.5)).unwrap(), "-2.5");
 
@@ -151,7 +151,7 @@ mod tests {
         let obj = json!({
             "string": "hello",
             "number": 42,
-            "float": 3.14,
+            "float": 1.23,
             "bool": true,
             "null": null,
             "array": [1, "two", 3.0],
@@ -159,7 +159,7 @@ mod tests {
         });
         let result = canonicalise(&obj).unwrap();
 
-        let expected = r#"{"array":[1,"two",3.0],"bool":true,"float":3.14,"null":null,"number":42,"object":{"nested":"value"},"string":"hello"}"#;
+        let expected = r#"{"array":[1,"two",3.0],"bool":true,"float":1.23,"null":null,"number":42,"object":{"nested":"value"},"string":"hello"}"#;
         assert_eq!(result, expected);
     }
 

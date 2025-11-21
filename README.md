@@ -1,6 +1,6 @@
 # json-register
 
-`json-register` is a high-performance library for registering JSON objects into a PostgreSQL database. It ensures that semantically equivalent JSON objects are stored only once by employing a canonicalisation strategy and assigning a unique 64-bit integer identifier to each object.
+`json-register` is a caching registry for JSON objects, with storage in a PostgreSQL database, using their JSONB encoding. It ensures that semantically equivalent JSON objects are cached only once by employing a canonicalisation strategy in the cache, and using JSONB comparisons in the database. The database assigns a uniqiue 32-bit integer identifier to each object.
 
 This library is written in Rust and provides native bindings for Python, allowing for seamless integration into applications written in either language.
 

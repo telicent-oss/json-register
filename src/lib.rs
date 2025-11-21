@@ -82,8 +82,8 @@ impl Register {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the unique ID (i64) or a `JsonRegisterError`.
-    pub async fn register_object(&self, value: &Value) -> Result<i64, JsonRegisterError> {
+    /// A `Result` containing the unique ID (i32) or a `JsonRegisterError`.
+    pub async fn register_object(&self, value: &Value) -> Result<i32, JsonRegisterError> {
         let canonical = canonicalise(value).map_err(JsonRegisterError::SerdeError)?;
 
         if let Some(id) = self.cache.get(&canonical) {
@@ -118,7 +118,7 @@ impl Register {
     pub async fn register_batch_objects(
         &self,
         values: &[Value],
-    ) -> Result<Vec<i64>, JsonRegisterError> {
+    ) -> Result<Vec<i32>, JsonRegisterError> {
         let mut canonicals = Vec::with_capacity(values.len());
         for value in values {
             canonicals.push(canonicalise(value).map_err(JsonRegisterError::SerdeError)?);
@@ -223,7 +223,7 @@ impl PyJsonRegister {
     }
 
     /// Registers a single JSON object from Python.
-    fn register_object(&self, json_obj: &Bound<'_, PyAny>) -> PyResult<i64> {
+    fn register_object(&self, json_obj: &Bound<'_, PyAny>) -> PyResult<i32> {
         let value: Value = pythonize::depythonize(json_obj)
             .map_err(|e| JsonRegisterError::SerializationError(e.to_string()))?;
         self.rt
@@ -232,7 +232,7 @@ impl PyJsonRegister {
     }
 
     /// Registers a batch of JSON objects from Python.
-    fn register_batch_objects(&self, json_objects: &Bound<'_, PyList>) -> PyResult<Vec<i64>> {
+    fn register_batch_objects(&self, json_objects: &Bound<'_, PyList>) -> PyResult<Vec<i32>> {
         let mut values = Vec::with_capacity(json_objects.len());
         for obj in json_objects {
             let value: Value = pythonize::depythonize(&obj)

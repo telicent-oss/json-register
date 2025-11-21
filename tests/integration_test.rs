@@ -53,7 +53,7 @@ async fn create_register(suffix: &str) -> Register {
     sqlx::query(&format!(
         r#"
         CREATE TABLE IF NOT EXISTS {table} (
-            {id_col} BIGSERIAL PRIMARY KEY,
+            {id_col} SERIAL PRIMARY KEY,
             {json_col} JSONB UNIQUE NOT NULL
         )
         "#

@@ -8,7 +8,7 @@ use std::sync::Mutex;
 /// from multiple threads. It maps canonicalised JSON strings to their
 /// corresponding database IDs.
 pub struct Cache {
-    inner: Mutex<LruCache<String, i64>>,
+    inner: Mutex<LruCache<String, i32>>,
 }
 
 impl Cache {
@@ -31,8 +31,8 @@ impl Cache {
     ///
     /// # Returns
     ///
-    /// `Some(i64)` if the key exists, `None` otherwise.
-    pub fn get(&self, key: &str) -> Option<i64> {
+    /// `Some(i32)` if the key exists, `None` otherwise.
+    pub fn get(&self, key: &str) -> Option<i32> {
         let mut cache = self.inner.lock().unwrap();
         cache.get(key).copied()
     }
@@ -43,7 +43,7 @@ impl Cache {
     ///
     /// * `key` - The canonicalised JSON string key.
     /// * `value` - The database ID associated with the key.
-    pub fn put(&self, key: String, value: i64) {
+    pub fn put(&self, key: String, value: i32) {
         let mut cache = self.inner.lock().unwrap();
         cache.put(key, value);
     }

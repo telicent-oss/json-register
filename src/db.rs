@@ -104,8 +104,8 @@ impl Db {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the ID (i64) or a `sqlx::Error`.
-    pub async fn register_object(&self, json_str: &str) -> Result<i64, sqlx::Error> {
+    /// A `Result` containing the ID (i32) or a `sqlx::Error`.
+    pub async fn register_object(&self, json_str: &str) -> Result<i32, sqlx::Error> {
         let row: PgRow = sqlx::query(&self.register_query)
             .bind(json_str) // $1
             .bind(json_str) // $2
@@ -127,7 +127,7 @@ impl Db {
     pub async fn register_batch_objects(
         &self,
         json_strs: &[String],
-    ) -> Result<Vec<i64>, sqlx::Error> {
+    ) -> Result<Vec<i32>, sqlx::Error> {
         if json_strs.is_empty() {
             return Ok(vec![]);
         }
@@ -139,7 +139,7 @@ impl Db {
 
         let mut ids = Vec::with_capacity(rows.len());
         for row in rows {
-            let id: i64 = row.try_get(0)?;
+            let id: i32 = row.try_get(0)?;
             ids.push(id);
         }
 

@@ -19,7 +19,7 @@ python = ["dep:pyo3", "dep:pythonize"]
 extension-module = ["pyo3/extension-module", "python"]
 
 [dependencies]
-pyo3 = { version = "0.23.3", optional = true }
+pyo3 = { version = "0.23.3", features = ["abi3-py38", "generate-import-lib"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lru = "0.12"

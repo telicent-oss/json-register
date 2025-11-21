@@ -83,7 +83,7 @@ def register(db_config):
             with conn.cursor() as cur:
                 cur.execute(f"""
                     CREATE TABLE IF NOT EXISTS {table_name} (
-                        id BIGSERIAL PRIMARY KEY,
+                        id SERIAL PRIMARY KEY,
                         json_object JSONB UNIQUE NOT NULL
                     )
                 """)
