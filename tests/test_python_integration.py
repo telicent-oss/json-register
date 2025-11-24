@@ -48,11 +48,12 @@ def get_db_config():
             "database_host": host,
             "database_port": int(port),
             "database_user": user,
-            "database_password": password
+            "database_password": password,
         }
     except Exception as e:
         print(f"Failed to parse DATABASE_URL: {e}")
         return None
+
 
 @pytest.fixture
 def db_config():
@@ -64,6 +65,7 @@ def db_config():
     if not config:
         pytest.skip("Invalid or missing DATABASE_URL")
     return config
+
 
 @pytest.fixture
 def register(db_config):
@@ -78,15 +80,18 @@ def register(db_config):
     # This is necessary because the Rust extension expects the table to exist.
     try:
         import psycopg
+
         conn_str = f"postgresql://{db_config['database_user']}:{db_config['database_password']}@{db_config['database_host']}:{db_config['database_port']}/{db_config['database_name']}"
         with psycopg.connect(conn_str) as conn:
             with conn.cursor() as cur:
-                cur.execute(f"""
+                cur.execute(
+                    f"""
                     CREATE TABLE IF NOT EXISTS {table_name} (
                         id SERIAL PRIMARY KEY,
                         json_object JSONB UNIQUE NOT NULL
                     )
-                """)
+                """
+                )
             conn.commit()
     except ImportError:
         print("Warning: psycopg not found, skipping table creation. Tests may fail if table does not exist.")
@@ -104,11 +109,12 @@ def register(db_config):
             table_name=table_name,
             id_column="id",
             jsonb_column="json_object",
-            pool_size=5
+            pool_size=5,
         )
         return reg
     except Exception as e:
         pytest.skip(f"Failed to connect to DB: {e}")
+
 
 def test_register_object(register):
     """
@@ -127,6 +133,7 @@ def test_register_object(register):
     id3 = register.register_object(obj2)
     assert id1 != id3
 
+
 def test_register_batch_objects(register):
     """
     Verifies that batch registration handles multiple objects correctly.
@@ -136,6 +143,7 @@ def test_register_batch_objects(register):
     assert len(ids) == 3
     assert ids[0] == ids[2]
     assert ids[0] != ids[1]
+
 
 def test_batch_order_preservation(register):
     """
@@ -157,6 +165,7 @@ def test_batch_order_preservation(register):
     assert len(ids2) == 100
     # First 50 of ids2 should match last 50 of ids
     assert ids2[:50] == ids[50:]
+
 
 def test_types_roundtrip(register):
     """

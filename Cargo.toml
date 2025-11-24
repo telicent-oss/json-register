@@ -1,6 +1,6 @@
 [package]
 name = "json-register"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A Rust library for registering JSON objects in PostgreSQL with canonicalisation and caching"
 license = "Apache-2.0"
@@ -14,7 +14,7 @@ name = "json_register"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["python"]
+default = []
 python = ["dep:pyo3", "dep:pythonize"]
 extension-module = ["pyo3/extension-module", "python"]
 
