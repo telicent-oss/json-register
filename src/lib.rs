@@ -14,6 +14,7 @@ use pyo3::types::PyList;
 use tokio::runtime::Runtime;
 
 use serde_json::Value;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 mod cache;
 mod canonicalise;
@@ -110,6 +111,9 @@ pub fn sanitize_connection_string(connection_string: &str) -> String {
 pub struct Register {
     db: Db,
     cache: Cache,
+    register_single_calls: AtomicU64,
+    register_batch_calls: AtomicU64,
+    total_objects_registered: AtomicU64,
 }
 
 impl Register {
@@ -155,7 +159,13 @@ impl Register {
         .await
         .map_err(JsonRegisterError::DbError)?;
         let cache = Cache::new(lru_cache_size);
-        Ok(Self { db, cache })
+        Ok(Self {
+            db,
+            cache,
+            register_single_calls: AtomicU64::new(0),
+            register_batch_calls: AtomicU64::new(0),
+            total_objects_registered: AtomicU64::new(0),
+        })
     }
 
     /// Registers a single JSON object.
@@ -172,6 +182,9 @@ impl Register {
     ///
     /// A `Result` containing the unique ID (i32) or a `JsonRegisterError`.
     pub async fn register_object(&self, value: &Value) -> Result<i32, JsonRegisterError> {
+        self.register_single_calls.fetch_add(1, Ordering::Relaxed);
+        self.total_objects_registered.fetch_add(1, Ordering::Relaxed);
+
         let canonical = canonicalise(value).map_err(JsonRegisterError::SerdeError)?;
 
         if let Some(id) = self.cache.get(&canonical) {
@@ -207,6 +220,10 @@ impl Register {
         &self,
         values: &[Value],
     ) -> Result<Vec<i32>, JsonRegisterError> {
+        self.register_batch_calls.fetch_add(1, Ordering::Relaxed);
+        self.total_objects_registered
+            .fetch_add(values.len() as u64, Ordering::Relaxed);
+
         let mut canonicals = Vec::with_capacity(values.len());
         for value in values {
             canonicals.push(canonicalise(value).map_err(JsonRegisterError::SerdeError)?);
@@ -305,6 +322,150 @@ impl Register {
     pub fn cache_hit_rate(&self) -> f64 {
         self.cache.hit_rate()
     }
+
+    /// Returns the current number of items in the cache.
+    ///
+    /// # Returns
+    ///
+    /// The number of items currently stored in the cache.
+    pub fn cache_size(&self) -> usize {
+        self.cache.size()
+    }
+
+    /// Returns the maximum capacity of the cache.
+    ///
+    /// # Returns
+    ///
+    /// The maximum number of items the cache can hold.
+    pub fn cache_capacity(&self) -> usize {
+        self.cache.capacity()
+    }
+
+    /// Returns the number of cache evictions.
+    ///
+    /// # Returns
+    ///
+    /// The total number of items evicted from the cache.
+    pub fn cache_evictions(&self) -> u64 {
+        self.cache.evictions()
+    }
+
+    /// Returns the number of active database connections.
+    ///
+    /// Active connections are those currently in use (not idle).
+    ///
+    /// # Returns
+    ///
+    /// The number of active connections (pool_size - idle_connections).
+    pub fn active_connections(&self) -> usize {
+        self.pool_size().saturating_sub(self.idle_connections())
+    }
+
+    /// Returns the total number of database queries executed.
+    ///
+    /// # Returns
+    ///
+    /// The total number of queries executed since instance creation.
+    pub fn db_queries_total(&self) -> u64 {
+        self.db.queries_executed()
+    }
+
+    /// Returns the total number of database query errors.
+    ///
+    /// # Returns
+    ///
+    /// The total number of failed queries since instance creation.
+    pub fn db_query_errors(&self) -> u64 {
+        self.db.query_errors()
+    }
+
+    /// Returns the number of times register_object was called.
+    ///
+    /// # Returns
+    ///
+    /// The total number of single object registration calls.
+    pub fn register_single_calls(&self) -> u64 {
+        self.register_single_calls.load(Ordering::Relaxed)
+    }
+
+    /// Returns the number of times register_batch_objects was called.
+    ///
+    /// # Returns
+    ///
+    /// The total number of batch registration calls.
+    pub fn register_batch_calls(&self) -> u64 {
+        self.register_batch_calls.load(Ordering::Relaxed)
+    }
+
+    /// Returns the total number of objects registered.
+    ///
+    /// This counts all objects across both single and batch operations.
+    ///
+    /// # Returns
+    ///
+    /// The total number of objects registered since instance creation.
+    pub fn total_objects_registered(&self) -> u64 {
+        self.total_objects_registered.load(Ordering::Relaxed)
+    }
+
+    /// Returns all telemetry metrics in a single snapshot.
+    ///
+    /// This is useful for OpenTelemetry exporters and monitoring systems
+    /// that need to collect all metrics at once.
+    ///
+    /// # Returns
+    ///
+    /// A `TelemetryMetrics` struct containing all current metric values.
+    pub fn telemetry_metrics(&self) -> TelemetryMetrics {
+        TelemetryMetrics {
+            // Cache metrics
+            cache_hits: self.cache_hits(),
+            cache_misses: self.cache_misses(),
+            cache_hit_rate: self.cache_hit_rate(),
+            cache_size: self.cache_size(),
+            cache_capacity: self.cache_capacity(),
+            cache_evictions: self.cache_evictions(),
+            // Connection pool metrics
+            pool_size: self.pool_size(),
+            idle_connections: self.idle_connections(),
+            active_connections: self.active_connections(),
+            is_closed: self.is_closed(),
+            // Database metrics
+            db_queries_total: self.db_queries_total(),
+            db_query_errors: self.db_query_errors(),
+            // Operation metrics
+            register_single_calls: self.register_single_calls(),
+            register_batch_calls: self.register_batch_calls(),
+            total_objects_registered: self.total_objects_registered(),
+        }
+    }
+}
+
+/// A snapshot of all telemetry metrics.
+///
+/// This struct provides a complete view of the register's performance
+/// and is designed to work well with OpenTelemetry exporters.
+#[derive(Debug, Clone)]
+pub struct TelemetryMetrics {
+    // Cache metrics
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub cache_hit_rate: f64,
+    pub cache_size: usize,
+    pub cache_capacity: usize,
+    pub cache_evictions: u64,
+    // Connection pool metrics
+    pub pool_size: usize,
+    pub idle_connections: usize,
+    pub active_connections: usize,
+    pub is_closed: bool,
+    // Database metrics
+    pub db_queries_total: u64,
+    pub db_query_errors: u64,
+    // Operation metrics
+    pub register_single_calls: u64,
+    pub register_batch_calls: u64,
+    pub total_objects_registered: u64,
 }
 
 #[cfg(feature = "python")]
@@ -501,6 +662,51 @@ impl PyJsonRegister {
     /// Returns a value between 0.0 and 100.0. Returns 0.0 if no cache operations have occurred.
     fn cache_hit_rate(&self) -> f64 {
         self.inner.cache_hit_rate()
+    }
+
+    /// Returns the current number of items in the cache.
+    fn cache_size(&self) -> usize {
+        self.inner.cache_size()
+    }
+
+    /// Returns the maximum capacity of the cache.
+    fn cache_capacity(&self) -> usize {
+        self.inner.cache_capacity()
+    }
+
+    /// Returns the number of cache evictions.
+    fn cache_evictions(&self) -> u64 {
+        self.inner.cache_evictions()
+    }
+
+    /// Returns the number of active database connections.
+    fn active_connections(&self) -> usize {
+        self.inner.active_connections()
+    }
+
+    /// Returns the total number of database queries executed.
+    fn db_queries_total(&self) -> u64 {
+        self.inner.db_queries_total()
+    }
+
+    /// Returns the total number of database query errors.
+    fn db_query_errors(&self) -> u64 {
+        self.inner.db_query_errors()
+    }
+
+    /// Returns the number of times register_object was called.
+    fn register_single_calls(&self) -> u64 {
+        self.inner.register_single_calls()
+    }
+
+    /// Returns the number of times register_batch_objects was called.
+    fn register_batch_calls(&self) -> u64 {
+        self.inner.register_batch_calls()
+    }
+
+    /// Returns the total number of objects registered.
+    fn total_objects_registered(&self) -> u64 {
+        self.inner.total_objects_registered()
     }
 }
 

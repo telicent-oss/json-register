@@ -1,5 +1,6 @@
-use sqlx::postgres::{PgPoolOptions, PgRow};
+use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 /// Validates that an SQL identifier (table or column name) is safe to use.
@@ -58,6 +59,8 @@ pub struct Db {
     pool: PgPool,
     register_query: String,
     register_batch_query: String,
+    queries_executed: AtomicU64,
+    query_errors: AtomicU64,
 }
 
 impl Db {
@@ -170,6 +173,8 @@ impl Db {
             pool,
             register_query,
             register_batch_query,
+            queries_executed: AtomicU64::new(0),
+            query_errors: AtomicU64::new(0),
         })
     }
 
@@ -183,13 +188,21 @@ impl Db {
     ///
     /// A `Result` containing the ID (i32) or a `sqlx::Error`.
     pub async fn register_object(&self, json_str: &str) -> Result<i32, sqlx::Error> {
-        let row: PgRow = sqlx::query(&self.register_query)
+        self.queries_executed.fetch_add(1, Ordering::Relaxed);
+
+        let result = sqlx::query(&self.register_query)
             .bind(json_str) // $1
             .bind(json_str) // $2
             .fetch_one(&self.pool)
-            .await?;
+            .await;
 
-        row.try_get(0)
+        match result {
+            Ok(row) => row.try_get(0),
+            Err(e) => {
+                self.query_errors.fetch_add(1, Ordering::Relaxed);
+                Err(e)
+            }
+        }
     }
 
     /// Registers a batch of JSON object strings in the database.
@@ -209,18 +222,27 @@ impl Db {
             return Ok(vec![]);
         }
 
-        let rows = sqlx::query(&self.register_batch_query)
+        self.queries_executed.fetch_add(1, Ordering::Relaxed);
+
+        let result = sqlx::query(&self.register_batch_query)
             .bind(json_strs) // $1::jsonb[]
             .fetch_all(&self.pool)
-            .await?;
+            .await;
 
-        let mut ids = Vec::with_capacity(rows.len());
-        for row in rows {
-            let id: i32 = row.try_get(0)?;
-            ids.push(id);
+        match result {
+            Ok(rows) => {
+                let mut ids = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let id: i32 = row.try_get(0)?;
+                    ids.push(id);
+                }
+                Ok(ids)
+            }
+            Err(e) => {
+                self.query_errors.fetch_add(1, Ordering::Relaxed);
+                Err(e)
+            }
         }
-
-        Ok(ids)
     }
 
     /// Returns the current size of the connection pool.
@@ -256,6 +278,24 @@ impl Db {
     /// `true` if the pool is closed, `false` otherwise.
     pub fn is_closed(&self) -> bool {
         self.pool.is_closed()
+    }
+
+    /// Returns the total number of database queries executed.
+    ///
+    /// # Returns
+    ///
+    /// The total number of queries executed since instance creation.
+    pub fn queries_executed(&self) -> u64 {
+        self.queries_executed.load(Ordering::Relaxed)
+    }
+
+    /// Returns the total number of database query errors.
+    ///
+    /// # Returns
+    ///
+    /// The total number of failed queries since instance creation.
+    pub fn query_errors(&self) -> u64 {
+        self.query_errors.load(Ordering::Relaxed)
     }
 }
 

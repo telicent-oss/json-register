@@ -10,8 +10,10 @@ use std::sync::Mutex;
 /// corresponding database IDs. It also tracks hit and miss statistics.
 pub struct Cache {
     inner: Mutex<LruCache<String, i32>>,
+    capacity: usize,
     hits: AtomicU64,
     misses: AtomicU64,
+    evictions: AtomicU64,
 }
 
 impl Cache {
@@ -27,8 +29,10 @@ impl Cache {
             inner: Mutex::new(LruCache::new(
                 NonZeroUsize::new(safe_capacity).expect("capacity should be non-zero after max(1)"),
             )),
+            capacity: safe_capacity,
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
+            evictions: AtomicU64::new(0),
         }
     }
 
@@ -67,6 +71,10 @@ impl Cache {
     pub fn put(&self, key: String, value: i32) {
         // Handle poisoned mutex gracefully by skipping the cache update
         if let Ok(mut cache) = self.inner.lock() {
+            // Track eviction if cache is at capacity and key doesn't exist
+            if cache.len() >= cache.cap().get() && !cache.contains(&key) {
+                self.evictions.fetch_add(1, Ordering::Relaxed);
+            }
             cache.put(key, value);
         }
     }
@@ -105,6 +113,34 @@ impl Cache {
         } else {
             (hits as f64 / total as f64) * 100.0
         }
+    }
+
+    /// Returns the current number of items in the cache.
+    ///
+    /// # Returns
+    ///
+    /// The number of items currently stored in the cache.
+    /// Returns 0 if the cache mutex is poisoned.
+    pub fn size(&self) -> usize {
+        self.inner.lock().ok().map(|cache| cache.len()).unwrap_or(0)
+    }
+
+    /// Returns the maximum capacity of the cache.
+    ///
+    /// # Returns
+    ///
+    /// The maximum number of items the cache can hold.
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// Returns the number of cache evictions.
+    ///
+    /// # Returns
+    ///
+    /// The total number of items evicted from the cache.
+    pub fn evictions(&self) -> u64 {
+        self.evictions.load(Ordering::Relaxed)
     }
 }
 
@@ -186,5 +222,38 @@ mod tests {
         assert_eq!(cache.hits(), 2);
         assert_eq!(cache.misses(), 2);
         assert_eq!(cache.hit_rate(), 50.0);
+    }
+
+    #[test]
+    fn test_cache_eviction_tracking() {
+        // Verifies that cache evictions are tracked correctly
+        let cache = Cache::new(2);
+
+        assert_eq!(cache.evictions(), 0);
+        assert_eq!(cache.size(), 0);
+        assert_eq!(cache.capacity(), 2);
+
+        cache.put("key1".to_string(), 1);
+        assert_eq!(cache.size(), 1);
+        assert_eq!(cache.evictions(), 0);
+
+        cache.put("key2".to_string(), 2);
+        assert_eq!(cache.size(), 2);
+        assert_eq!(cache.evictions(), 0);
+
+        // This should trigger an eviction
+        cache.put("key3".to_string(), 3);
+        assert_eq!(cache.size(), 2);
+        assert_eq!(cache.evictions(), 1);
+
+        // Another eviction
+        cache.put("key4".to_string(), 4);
+        assert_eq!(cache.size(), 2);
+        assert_eq!(cache.evictions(), 2);
+
+        // Updating an existing key should not trigger eviction
+        cache.put("key3".to_string(), 30);
+        assert_eq!(cache.size(), 2);
+        assert_eq!(cache.evictions(), 2);
     }
 }

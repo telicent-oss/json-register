@@ -197,12 +197,13 @@ register = JsonRegister(
 
 ## Monitoring
 
-The library provides methods to query connection pool and cache metrics. Applications can use these to integrate with monitoring systems such as Prometheus, OpenTelemetry, or custom logging.
+The library provides comprehensive telemetry metrics for integration with monitoring systems such as Prometheus, OpenTelemetry, or custom logging. All metrics can be retrieved individually or as a complete snapshot.
 
 ### Connection Pool Metrics
 
 *   `pool_size()`: Total number of connections in the pool (idle and active)
 *   `idle_connections()`: Number of idle connections available for use
+*   `active_connections()`: Number of connections currently in use
 *   `is_closed()`: Whether the connection pool is closed
 
 ### Cache Metrics
@@ -210,35 +211,55 @@ The library provides methods to query connection pool and cache metrics. Applica
 *   `cache_hits()`: Total number of successful cache lookups
 *   `cache_misses()`: Total number of unsuccessful cache lookups
 *   `cache_hit_rate()`: Hit rate as a percentage (0.0 to 100.0)
+*   `cache_size()`: Current number of items in the cache
+*   `cache_capacity()`: Maximum cache capacity
+*   `cache_evictions()`: Total number of items evicted from the cache
+
+### Database Metrics
+
+*   `db_queries_total()`: Total number of database queries executed
+*   `db_query_errors()`: Total number of failed database queries
+
+### Operation Metrics
+
+*   `register_single_calls()`: Number of times `register_object` was called
+*   `register_batch_calls()`: Number of times `register_batch_objects` was called
+*   `total_objects_registered()`: Total number of objects registered across all calls
+
+### Telemetry Snapshot
+
+The `telemetry_metrics()` method (Rust only) returns a complete snapshot of all metrics in a single call, which is useful for OpenTelemetry exporters
 
 ### Rust Monitoring Example
 
 ```rust
-// Query pool metrics
-let total = register.pool_size();
-let idle = register.idle_connections();
-println!("Pool: {}/{} connections, {} idle", total, pool_size, idle);
+// Get all metrics at once (recommended for OpenTelemetry)
+let metrics = register.telemetry_metrics();
+println!("Cache: {}/{} items, {} evictions", metrics.cache_size, metrics.cache_capacity, metrics.cache_evictions);
+println!("Cache performance: {} hits, {} misses ({:.2}% hit rate)",
+    metrics.cache_hits, metrics.cache_misses, metrics.cache_hit_rate);
+println!("Pool: {} total, {} active, {} idle",
+    metrics.pool_size, metrics.active_connections, metrics.idle_connections);
+println!("Database: {} queries, {} errors",
+    metrics.db_queries_total, metrics.db_query_errors);
+println!("Operations: {} objects registered ({} single + {} batch calls)",
+    metrics.total_objects_registered, metrics.register_single_calls, metrics.register_batch_calls);
 
-// Query cache metrics
-let hits = register.cache_hits();
-let misses = register.cache_misses();
-let rate = register.cache_hit_rate();
-println!("Cache: {} hits, {} misses ({:.2}% hit rate)", hits, misses, rate);
+// Or query individual metrics
+let hit_rate = register.cache_hit_rate();
+let active = register.active_connections();
 ```
 
 ### Python Monitoring Example
 
 ```python
-# Query pool metrics
-total = register.pool_size()
-idle = register.idle_connections()
-print(f"Pool: {total} connections, {idle} idle")
-
-# Query cache metrics
-hits = register.cache_hits()
-misses = register.cache_misses()
-rate = register.cache_hit_rate()
-print(f"Cache: {hits} hits, {misses} misses ({rate:.2f}% hit rate)")
+# Individual metrics
+print(f"Cache: {register.cache_size()}/{register.cache_capacity()} items")
+print(f"Cache evictions: {register.cache_evictions()}")
+print(f"Active connections: {register.active_connections()}")
+print(f"DB queries: {register.db_queries_total()}, errors: {register.db_query_errors()}")
+print(f"Objects registered: {register.total_objects_registered()}")
+print(f"Single calls: {register.register_single_calls()}, Batch calls: {register.register_batch_calls()}")
 ```
 
 ## License
