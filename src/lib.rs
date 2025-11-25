@@ -183,7 +183,8 @@ impl Register {
     /// A `Result` containing the unique ID (i32) or a `JsonRegisterError`.
     pub async fn register_object(&self, value: &Value) -> Result<i32, JsonRegisterError> {
         self.register_single_calls.fetch_add(1, Ordering::Relaxed);
-        self.total_objects_registered.fetch_add(1, Ordering::Relaxed);
+        self.total_objects_registered
+            .fetch_add(1, Ordering::Relaxed);
 
         let canonical = canonicalise(value).map_err(JsonRegisterError::SerdeError)?;
 

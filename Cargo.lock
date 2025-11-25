@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "json-register"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "lru",
  "pyo3",
