@@ -1,8 +1,10 @@
 use deadpool::managed::{PoolError, QueueMode};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use rustls::{ClientConfig, RootCertStore};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio_postgres::NoTls;
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 /// Validates that an SQL identifier (table or column name) is safe to use.
 ///
@@ -42,6 +44,7 @@ fn validate_sql_identifier(identifier: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+
 /// Handles database interactions for registering JSON objects.
 ///
 /// This struct manages the connection pool and executes SQL queries to insert
@@ -68,6 +71,7 @@ impl Db {
     /// * `acquire_timeout_secs` - Optional timeout for acquiring connections (default: 5s).
     /// * `idle_timeout_secs` - Optional timeout for idle connections (default: 600s).
     /// * `max_lifetime_secs` - Optional maximum lifetime for connections (default: 1800s).
+    /// * `use_tls` - Optional flag to enable TLS (default: false for backwards compatibility).
     ///
     /// # Returns
     ///
@@ -82,6 +86,7 @@ impl Db {
         acquire_timeout_secs: Option<u64>,
         idle_timeout_secs: Option<u64>,
         max_lifetime_secs: Option<u64>,
+        use_tls: Option<bool>,
     ) -> Result<Self, crate::errors::JsonRegisterError> {
         // Validate SQL identifiers to prevent SQL injection
         validate_sql_identifier(table_name, "table_name")
@@ -112,12 +117,29 @@ impl Db {
             queue_mode: QueueMode::Fifo,
         });
 
-        let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls).map_err(|e| {
-            // Sanitize any connection strings that might appear in error messages
-            let error_msg = e.to_string();
-            let sanitized_msg = crate::sanitize_connection_string(&error_msg);
-            crate::errors::JsonRegisterError::Configuration(sanitized_msg)
-        })?;
+        let pool = if use_tls.unwrap_or(false) {
+            // Create TLS connector with system root certificates
+            let mut root_store = RootCertStore::empty();
+            root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+            let config = ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth();
+
+            let tls = MakeRustlsConnect::new(config);
+
+            cfg.create_pool(Some(Runtime::Tokio1), tls).map_err(|e| {
+                let error_msg = e.to_string();
+                let sanitized_msg = crate::sanitize_connection_string(&error_msg);
+                crate::errors::JsonRegisterError::Configuration(sanitized_msg)
+            })?
+        } else {
+            cfg.create_pool(Some(Runtime::Tokio1), NoTls).map_err(|e| {
+                let error_msg = e.to_string();
+                let sanitized_msg = crate::sanitize_connection_string(&error_msg);
+                crate::errors::JsonRegisterError::Configuration(sanitized_msg)
+            })?
+        };
 
         // Query to register a single object.
         // It attempts to insert the object. If it exists (ON CONFLICT), it does nothing.
@@ -194,18 +216,14 @@ impl Db {
     ) -> Result<i32, tokio_postgres::Error> {
         self.queries_executed.fetch_add(1, Ordering::Relaxed);
 
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e: PoolError<tokio_postgres::Error>| {
-                self.query_errors.fetch_add(1, Ordering::Relaxed);
-                match e {
-                    PoolError::Backend(db_err) => db_err,
-                    PoolError::Timeout(_) => tokio_postgres::Error::__private_api_timeout(),
-                    _ => tokio_postgres::Error::__private_api_timeout(),
-                }
-            })?;
+        let client = self.pool.get().await.map_err(|e| {
+            self.query_errors.fetch_add(1, Ordering::Relaxed);
+            match e {
+                PoolError::Backend(db_err) => db_err,
+                PoolError::Timeout(_) => tokio_postgres::Error::__private_api_timeout(),
+                _ => tokio_postgres::Error::__private_api_timeout(),
+            }
+        })?;
 
         let result = client
             .query_one(&self.register_query, &[value, value])
@@ -243,18 +261,14 @@ impl Db {
 
         self.queries_executed.fetch_add(1, Ordering::Relaxed);
 
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e: PoolError<tokio_postgres::Error>| {
-                self.query_errors.fetch_add(1, Ordering::Relaxed);
-                match e {
-                    PoolError::Backend(db_err) => db_err,
-                    PoolError::Timeout(_) => tokio_postgres::Error::__private_api_timeout(),
-                    _ => tokio_postgres::Error::__private_api_timeout(),
-                }
-            })?;
+        let client = self.pool.get().await.map_err(|e| {
+            self.query_errors.fetch_add(1, Ordering::Relaxed);
+            match e {
+                PoolError::Backend(db_err) => db_err,
+                PoolError::Timeout(_) => tokio_postgres::Error::__private_api_timeout(),
+                _ => tokio_postgres::Error::__private_api_timeout(),
+            }
+        })?;
 
         let values_vec: Vec<&serde_json::Value> = values.iter().collect();
         let result = client
@@ -287,8 +301,7 @@ impl Db {
     ///
     /// The number of connections in the pool.
     pub fn pool_size(&self) -> usize {
-        let status = self.pool.status();
-        status.size
+        self.pool.status().size
     }
 
     /// Returns the number of idle connections in the pool.
@@ -300,8 +313,7 @@ impl Db {
     ///
     /// The number of idle connections.
     pub fn idle_connections(&self) -> usize {
-        let status = self.pool.status();
-        status.available
+        self.pool.status().available
     }
 
     /// Checks if the connection pool is closed.
@@ -313,8 +325,7 @@ impl Db {
     /// `true` if the pool is closed, `false` otherwise.
     pub fn is_closed(&self) -> bool {
         // deadpool doesn't have is_closed, check if pool is available
-        let status = self.pool.status();
-        status.max_size == 0
+        self.pool.status().max_size == 0
     }
 
     /// Returns the total number of database queries executed.

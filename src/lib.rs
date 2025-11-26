@@ -130,6 +130,7 @@ impl Register {
     /// * `acquire_timeout_secs` - Optional timeout for acquiring connections (default: 5s).
     /// * `idle_timeout_secs` - Optional timeout for idle connections (default: 600s).
     /// * `max_lifetime_secs` - Optional maximum lifetime for connections (default: 1800s).
+    /// * `use_tls` - Optional flag to enable TLS (default: false for backwards compatibility).
     ///
     /// # Returns
     ///
@@ -145,6 +146,7 @@ impl Register {
         acquire_timeout_secs: Option<u64>,
         idle_timeout_secs: Option<u64>,
         max_lifetime_secs: Option<u64>,
+        use_tls: Option<bool>,
     ) -> Result<Self, JsonRegisterError> {
         let db = Db::new(
             connection_string,
@@ -155,6 +157,7 @@ impl Register {
             acquire_timeout_secs,
             idle_timeout_secs,
             max_lifetime_secs,
+            use_tls,
         )
         .await?;
         let cache = Cache::new(lru_cache_size);
@@ -493,7 +496,8 @@ impl PyJsonRegister {
         pool_size=10,
         acquire_timeout_secs=None,
         idle_timeout_secs=None,
-        max_lifetime_secs=None
+        max_lifetime_secs=None,
+        use_tls=None
     ))]
     #[allow(clippy::too_many_arguments)]
     /// Initializes a new `JsonRegister` instance from Python.
@@ -503,6 +507,7 @@ impl PyJsonRegister {
     /// * `acquire_timeout_secs` - Timeout for acquiring a connection from pool (default: 5)
     /// * `idle_timeout_secs` - Timeout for idle connections before closure (default: 600)
     /// * `max_lifetime_secs` - Maximum lifetime of connections (default: 1800)
+    /// * `use_tls` - Enable TLS for database connections (default: False for backwards compatibility)
     fn new(
         database_name: String,
         database_host: String,
@@ -517,6 +522,7 @@ impl PyJsonRegister {
         acquire_timeout_secs: Option<u64>,
         idle_timeout_secs: Option<u64>,
         max_lifetime_secs: Option<u64>,
+        use_tls: Option<bool>,
     ) -> PyResult<Self> {
         // Validate configuration parameters
         if database_name.is_empty() {
@@ -591,6 +597,7 @@ impl PyJsonRegister {
                 acquire_timeout_secs,
                 idle_timeout_secs,
                 max_lifetime_secs,
+                use_tls,
             )
             .await
         })?;

@@ -76,6 +76,7 @@ async fn create_register(suffix: &str) -> Register {
         None, // acquire_timeout_secs
         None, // idle_timeout_secs
         None, // max_lifetime_secs
+        None, // use_tls (defaults to false)
     )
     .await
     .expect("Failed to connect to DB")

@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+        target: [x86_64-unknown-linux-gnu]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -141,15 +141,6 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: auto
-          before-script-linux: |
-            # Install build dependencies for aws-lc-sys
-            yum install -y cmake3 perl-core
-            ln -sf /usr/bin/cmake3 /usr/bin/cmake
-        env:
-          # Fix for aws-lc-sys on Linux ARM64
-          CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
-          TARGET_CC: "clang"
-          AWS_LC_SYS_CMAKE_BUILDER: "1"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
