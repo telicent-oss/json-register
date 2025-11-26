@@ -126,14 +126,14 @@ impl Db {
             r#"
             WITH inserted AS (
                 INSERT INTO {table_name} ({jsonb_column})
-                VALUES ($1::jsonb)
+                VALUES ($1)
                 ON CONFLICT ({jsonb_column}) DO NOTHING
                 RETURNING {id_column}
             )
             SELECT {id_column} FROM inserted
             UNION ALL
             SELECT {id_column} FROM {table_name}
-            WHERE {jsonb_column} = $2::jsonb
+            WHERE {jsonb_column} = $2
               AND NOT EXISTS (SELECT 1 FROM inserted)
             LIMIT 1
             "#
@@ -179,16 +179,19 @@ impl Db {
         })
     }
 
-    /// Registers a single JSON object string in the database.
+    /// Registers a single JSON object in the database.
     ///
     /// # Arguments
     ///
-    /// * `json_str` - The canonicalised JSON string.
+    /// * `value` - The JSON value to register.
     ///
     /// # Returns
     ///
     /// A `Result` containing the ID (i32) or a `tokio_postgres::Error`.
-    pub async fn register_object(&self, json_str: &str) -> Result<i32, tokio_postgres::Error> {
+    pub async fn register_object(
+        &self,
+        value: &serde_json::Value,
+    ) -> Result<i32, tokio_postgres::Error> {
         self.queries_executed.fetch_add(1, Ordering::Relaxed);
 
         let client = self
@@ -205,11 +208,16 @@ impl Db {
             })?;
 
         let result = client
-            .query_one(&self.register_query, &[&json_str, &json_str])
+            .query_one(&self.register_query, &[value, value])
             .await;
 
         match result {
-            Ok(row) => Ok(row.get(0)),
+            Ok(row) => {
+                // PostgreSQL returns Int8 (i64) even for SERIAL (i32) columns
+                // So we get as i64 and cast to i32
+                let id: i64 = row.get(0);
+                Ok(id as i32)
+            }
             Err(e) => {
                 self.query_errors.fetch_add(1, Ordering::Relaxed);
                 Err(e)
@@ -217,20 +225,20 @@ impl Db {
         }
     }
 
-    /// Registers a batch of JSON object strings in the database.
+    /// Registers a batch of JSON objects in the database.
     ///
     /// # Arguments
     ///
-    /// * `json_strs` - A slice of canonicalised JSON strings.
+    /// * `values` - A slice of JSON values to register.
     ///
     /// # Returns
     ///
     /// A `Result` containing a vector of IDs or a `tokio_postgres::Error`.
     pub async fn register_batch_objects(
         &self,
-        json_strs: &[String],
+        values: &[serde_json::Value],
     ) -> Result<Vec<i32>, tokio_postgres::Error> {
-        if json_strs.is_empty() {
+        if values.is_empty() {
             return Ok(vec![]);
         }
 
@@ -249,16 +257,19 @@ impl Db {
                 }
             })?;
 
+        let values_vec: Vec<&serde_json::Value> = values.iter().collect();
         let result = client
-            .query(&self.register_batch_query, &[&json_strs])
+            .query(&self.register_batch_query, &[&values_vec])
             .await;
 
         match result {
             Ok(rows) => {
                 let mut ids = Vec::with_capacity(rows.len());
                 for row in rows {
-                    let id: i32 = row.get(0);
-                    ids.push(id);
+                    // PostgreSQL returns Int8 (i64) even for SERIAL (i32) columns
+                    // So we get as i64 and cast to i32
+                    let id: i64 = row.get(0);
+                    ids.push(id as i32);
                 }
                 Ok(ids)
             }

@@ -193,7 +193,7 @@ impl Register {
 
         let id = self
             .db
-            .register_object(&canonical)
+            .register_object(value)
             .await
             .map_err(JsonRegisterError::DbError)?;
 
@@ -248,7 +248,7 @@ impl Register {
         // If not all items are in the cache, query the database
         let ids = self
             .db
-            .register_batch_objects(&canonicals)
+            .register_batch_objects(values)
             .await
             .map_err(JsonRegisterError::DbError)?;
 

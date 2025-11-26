@@ -111,6 +111,26 @@ jobs:
           name: wheels-sdist
           path: dist
 
+  # Generate Software Bill of Materials (SBOM)
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-sbom
+        run: cargo install cargo-sbom
+      - name: Generate SBOM (CycloneDX JSON)
+        run: cargo sbom --output-format json > sbom.cyclonedx.json
+      - name: Generate SBOM (CycloneDX XML)
+        run: cargo sbom --output-format xml > sbom.cyclonedx.xml
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            sbom.cyclonedx.json
+            sbom.cyclonedx.xml
+
   publish-testpypi:
     name: Publish to TestPyPI
     runs-on: ubuntu-latest
