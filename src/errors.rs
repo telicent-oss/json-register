@@ -9,7 +9,7 @@ use thiserror::Error;
 pub enum JsonRegisterError {
     /// An error occurred while interacting with the database.
     #[error("Database error: {0}")]
-    DbError(#[from] sqlx::Error),
+    DbError(#[from] tokio_postgres::Error),
 
     /// An error occurred while serializing or deserializing JSON.
     #[error("Serialization error: {0}")]

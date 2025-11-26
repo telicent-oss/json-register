@@ -1,7 +1,8 @@
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, Row};
+use deadpool::managed::{PoolError, QueueMode};
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use tokio_postgres::NoTls;
 
 /// Validates that an SQL identifier (table or column name) is safe to use.
 ///
@@ -13,36 +14,27 @@ use std::time::Duration;
 /// # Returns
 ///
 /// `Ok(())` if valid, or an error describing the issue.
-fn validate_sql_identifier(identifier: &str, name: &str) -> Result<(), sqlx::Error> {
+fn validate_sql_identifier(identifier: &str, name: &str) -> Result<(), String> {
     if identifier.is_empty() {
-        return Err(sqlx::Error::Configuration(
-            format!("{} cannot be empty", name).into(),
-        ));
+        return Err(format!("{} cannot be empty", name));
     }
 
     if identifier.len() > 63 {
-        return Err(sqlx::Error::Configuration(
-            format!("{} exceeds PostgreSQL's 63 character limit", name).into(),
-        ));
+        return Err(format!("{} exceeds PostgreSQL's 63 character limit", name));
     }
 
     // Validate that identifier contains only safe characters: alphanumeric, underscore
     // Must start with a letter or underscore
     let first_char = identifier.chars().next().unwrap();
     if !first_char.is_ascii_alphabetic() && first_char != '_' {
-        return Err(sqlx::Error::Configuration(
-            format!("{} must start with a letter or underscore", name).into(),
-        ));
+        return Err(format!("{} must start with a letter or underscore", name));
     }
 
     for c in identifier.chars() {
         if !c.is_ascii_alphanumeric() && c != '_' {
-            return Err(sqlx::Error::Configuration(
-                format!(
-                    "{} contains invalid character '{}'. Only alphanumeric and underscore allowed",
-                    name, c
-                )
-                .into(),
+            return Err(format!(
+                "{} contains invalid character '{}'. Only alphanumeric and underscore allowed",
+                name, c
             ));
         }
     }
@@ -56,7 +48,7 @@ fn validate_sql_identifier(identifier: &str, name: &str) -> Result<(), sqlx::Err
 /// or retrieve JSON objects. It uses optimized queries to handle concurrency
 /// and minimize round-trips.
 pub struct Db {
-    pool: PgPool,
+    pool: Pool,
     register_query: String,
     register_batch_query: String,
     queries_executed: AtomicU64,
@@ -79,7 +71,7 @@ impl Db {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the new `Db` instance or a `sqlx::Error`.
+    /// A `Result` containing the new `Db` instance or a `JsonRegisterError`.
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         connection_string: &str,
@@ -90,33 +82,42 @@ impl Db {
         acquire_timeout_secs: Option<u64>,
         idle_timeout_secs: Option<u64>,
         max_lifetime_secs: Option<u64>,
-    ) -> Result<Self, sqlx::Error> {
+    ) -> Result<Self, crate::errors::JsonRegisterError> {
         // Validate SQL identifiers to prevent SQL injection
-        validate_sql_identifier(table_name, "table_name")?;
-        validate_sql_identifier(id_column, "id_column")?;
-        validate_sql_identifier(jsonb_column, "jsonb_column")?;
+        validate_sql_identifier(table_name, "table_name")
+            .map_err(crate::errors::JsonRegisterError::Configuration)?;
+        validate_sql_identifier(id_column, "id_column")
+            .map_err(crate::errors::JsonRegisterError::Configuration)?;
+        validate_sql_identifier(jsonb_column, "jsonb_column")
+            .map_err(crate::errors::JsonRegisterError::Configuration)?;
 
         // Use provided timeouts or sensible defaults
         let acquire_timeout = Duration::from_secs(acquire_timeout_secs.unwrap_or(5));
-        let idle_timeout = idle_timeout_secs.map(Duration::from_secs);
-        let max_lifetime = max_lifetime_secs.map(Duration::from_secs);
+        let _idle_timeout = idle_timeout_secs.map(Duration::from_secs);
+        let _max_lifetime = max_lifetime_secs.map(Duration::from_secs);
 
-        let pool = PgPoolOptions::new()
-            .max_connections(pool_size)
-            // Acquire timeout: get a connection from the pool
-            .acquire_timeout(acquire_timeout)
-            // Idle timeout: close connections idle for too long (default: 10 min)
-            .idle_timeout(idle_timeout.or(Some(Duration::from_secs(600))))
-            // Max lifetime: close connections after max age (default: 30 min)
-            .max_lifetime(max_lifetime.or(Some(Duration::from_secs(1800))))
-            .connect(connection_string)
-            .await
-            .map_err(|e| {
-                // Sanitize any connection strings that might appear in error messages
-                let error_msg = e.to_string();
-                let sanitized_msg = crate::sanitize_connection_string(&error_msg);
-                sqlx::Error::Configuration(sanitized_msg.into())
-            })?;
+        // Parse connection string into deadpool config
+        let mut cfg = Config::new();
+        cfg.url = Some(connection_string.to_string());
+        cfg.manager = Some(ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        });
+        cfg.pool = Some(deadpool_postgres::PoolConfig {
+            max_size: pool_size as usize,
+            timeouts: deadpool_postgres::Timeouts {
+                wait: Some(acquire_timeout),
+                create: Some(Duration::from_secs(10)),
+                recycle: Some(Duration::from_secs(10)),
+            },
+            queue_mode: QueueMode::Fifo,
+        });
+
+        let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls).map_err(|e| {
+            // Sanitize any connection strings that might appear in error messages
+            let error_msg = e.to_string();
+            let sanitized_msg = crate::sanitize_connection_string(&error_msg);
+            crate::errors::JsonRegisterError::Configuration(sanitized_msg)
+        })?;
 
         // Query to register a single object.
         // It attempts to insert the object. If it exists (ON CONFLICT), it does nothing.
@@ -186,18 +187,29 @@ impl Db {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the ID (i32) or a `sqlx::Error`.
-    pub async fn register_object(&self, json_str: &str) -> Result<i32, sqlx::Error> {
+    /// A `Result` containing the ID (i32) or a `tokio_postgres::Error`.
+    pub async fn register_object(&self, json_str: &str) -> Result<i32, tokio_postgres::Error> {
         self.queries_executed.fetch_add(1, Ordering::Relaxed);
 
-        let result = sqlx::query(&self.register_query)
-            .bind(json_str) // $1
-            .bind(json_str) // $2
-            .fetch_one(&self.pool)
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e: PoolError<tokio_postgres::Error>| {
+                self.query_errors.fetch_add(1, Ordering::Relaxed);
+                match e {
+                    PoolError::Backend(db_err) => db_err,
+                    PoolError::Timeout(_) => tokio_postgres::Error::__private_api_timeout(),
+                    _ => tokio_postgres::Error::__private_api_timeout(),
+                }
+            })?;
+
+        let result = client
+            .query_one(&self.register_query, &[&json_str, &json_str])
             .await;
 
         match result {
-            Ok(row) => row.try_get(0),
+            Ok(row) => Ok(row.get(0)),
             Err(e) => {
                 self.query_errors.fetch_add(1, Ordering::Relaxed);
                 Err(e)
@@ -213,27 +225,39 @@ impl Db {
     ///
     /// # Returns
     ///
-    /// A `Result` containing a vector of IDs or a `sqlx::Error`.
+    /// A `Result` containing a vector of IDs or a `tokio_postgres::Error`.
     pub async fn register_batch_objects(
         &self,
         json_strs: &[String],
-    ) -> Result<Vec<i32>, sqlx::Error> {
+    ) -> Result<Vec<i32>, tokio_postgres::Error> {
         if json_strs.is_empty() {
             return Ok(vec![]);
         }
 
         self.queries_executed.fetch_add(1, Ordering::Relaxed);
 
-        let result = sqlx::query(&self.register_batch_query)
-            .bind(json_strs) // $1::jsonb[]
-            .fetch_all(&self.pool)
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e: PoolError<tokio_postgres::Error>| {
+                self.query_errors.fetch_add(1, Ordering::Relaxed);
+                match e {
+                    PoolError::Backend(db_err) => db_err,
+                    PoolError::Timeout(_) => tokio_postgres::Error::__private_api_timeout(),
+                    _ => tokio_postgres::Error::__private_api_timeout(),
+                }
+            })?;
+
+        let result = client
+            .query(&self.register_batch_query, &[&json_strs])
             .await;
 
         match result {
             Ok(rows) => {
                 let mut ids = Vec::with_capacity(rows.len());
                 for row in rows {
-                    let id: i32 = row.try_get(0)?;
+                    let id: i32 = row.get(0);
                     ids.push(id);
                 }
                 Ok(ids)
@@ -254,7 +278,8 @@ impl Db {
     ///
     /// The number of connections in the pool.
     pub fn pool_size(&self) -> usize {
-        self.pool.size() as usize
+        let status = self.pool.status();
+        status.size
     }
 
     /// Returns the number of idle connections in the pool.
@@ -266,7 +291,8 @@ impl Db {
     ///
     /// The number of idle connections.
     pub fn idle_connections(&self) -> usize {
-        self.pool.num_idle()
+        let status = self.pool.status();
+        status.available
     }
 
     /// Checks if the connection pool is closed.
@@ -277,7 +303,9 @@ impl Db {
     ///
     /// `true` if the pool is closed, `false` otherwise.
     pub fn is_closed(&self) -> bool {
-        self.pool.is_closed()
+        // deadpool doesn't have is_closed, check if pool is available
+        let status = self.pool.status();
+        status.max_size == 0
     }
 
     /// Returns the total number of database queries executed.

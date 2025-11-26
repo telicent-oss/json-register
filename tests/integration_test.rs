@@ -45,20 +45,31 @@ async fn create_register(suffix: &str) -> Register {
     let conn_str = build_connection_string(&user, &password, &host, port_num, &db_name);
 
     // Ensure the test table exists.
-    let pool = sqlx::PgPool::connect(&conn_str)
+    let (client, connection) = tokio_postgres::connect(&conn_str, tokio_postgres::NoTls)
         .await
         .expect("Failed to connect to DB for setup");
-    sqlx::query(&format!(
-        r#"
+
+    // Spawn connection in background
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
+    client
+        .execute(
+            &format!(
+                r#"
         CREATE TABLE IF NOT EXISTS {table} (
             {id_col} SERIAL PRIMARY KEY,
             {json_col} JSONB UNIQUE NOT NULL
         )
         "#
-    ))
-    .execute(&pool)
-    .await
-    .expect("Failed to create table");
+            ),
+            &[],
+        )
+        .await
+        .expect("Failed to create table");
 
     Register::new(
         &conn_str, &table, &id_col, &json_col, pool_size, cache_size,

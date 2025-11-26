@@ -156,8 +156,7 @@ impl Register {
             idle_timeout_secs,
             max_lifetime_secs,
         )
-        .await
-        .map_err(JsonRegisterError::DbError)?;
+        .await?;
         let cache = Cache::new(lru_cache_size);
         Ok(Self {
             db,
