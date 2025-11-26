@@ -120,16 +120,12 @@ jobs:
       - name: Install cargo-sbom
         run: cargo install cargo-sbom
       - name: Generate SBOM (CycloneDX JSON)
-        run: cargo sbom --output-format json > sbom.cyclonedx.json
-      - name: Generate SBOM (CycloneDX XML)
-        run: cargo sbom --output-format xml > sbom.cyclonedx.xml
+        run: cargo sbom --output-format cyclone_dx_json_1_6 > sbom.cyclonedx.json
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
           name: sbom
-          path: |
-            sbom.cyclonedx.json
-            sbom.cyclonedx.xml
+          path: sbom.cyclonedx.json
 
   publish-testpypi:
     name: Publish to TestPyPI

@@ -130,9 +130,9 @@ impl Db {
                 ON CONFLICT ({jsonb_column}) DO NOTHING
                 RETURNING {id_column}
             )
-            SELECT {id_column} FROM inserted
+            SELECT {id_column}::INT FROM inserted
             UNION ALL
-            SELECT {id_column} FROM {table_name}
+            SELECT {id_column}::INT FROM {table_name}
             WHERE {jsonb_column} = $2
               AND NOT EXISTS (SELECT 1 FROM inserted)
             LIMIT 1
@@ -162,7 +162,7 @@ impl Db {
                 FROM {table_name} t
                 JOIN input_objects io ON t.{jsonb_column} = io.json_value
             )
-            SELECT COALESCE(i.{id_column}, e.{id_column}) as {id_column}, io.original_order
+            SELECT COALESCE(i.{id_column}, e.{id_column})::INT as {id_column}, io.original_order
             FROM input_objects io
             LEFT JOIN inserted i ON io.json_value = i.{jsonb_column}
             LEFT JOIN existing e ON io.json_value = e.{jsonb_column}
@@ -213,10 +213,9 @@ impl Db {
 
         match result {
             Ok(row) => {
-                // PostgreSQL returns Int8 (i64) even for SERIAL (i32) columns
-                // So we get as i64 and cast to i32
-                let id: i64 = row.get(0);
-                Ok(id as i32)
+                // Explicitly cast to INT in SQL ensures we always get i32
+                let id: i32 = row.get(0);
+                Ok(id)
             }
             Err(e) => {
                 self.query_errors.fetch_add(1, Ordering::Relaxed);
@@ -266,10 +265,9 @@ impl Db {
             Ok(rows) => {
                 let mut ids = Vec::with_capacity(rows.len());
                 for row in rows {
-                    // PostgreSQL returns Int8 (i64) even for SERIAL (i32) columns
-                    // So we get as i64 and cast to i32
-                    let id: i64 = row.get(0);
-                    ids.push(id as i32);
+                    // Explicitly cast to INT in SQL ensures we always get i32
+                    let id: i32 = row.get(0);
+                    ids.push(id);
                 }
                 Ok(ids)
             }
