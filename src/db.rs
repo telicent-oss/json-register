@@ -44,7 +44,6 @@ fn validate_sql_identifier(identifier: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-
 /// Handles database interactions for registering JSON objects.
 ///
 /// This struct manages the connection pool and executes SQL queries to insert
